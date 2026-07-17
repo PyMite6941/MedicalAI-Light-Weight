@@ -1,0 +1,1 @@
+Welcome! This is my attempt on a Medical AI tool that can be run anywhere with great speed. This is my first ever project with VLM, and VLM is necessary for medical procedures so that's why I chose VLM.
