@@ -1,3 +1,5 @@
 analyzing_images_for_ai.md
 blip*/
 data*/
+checkpoints*/
+__pycache__/
