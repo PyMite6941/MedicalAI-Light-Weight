@@ -150,6 +150,19 @@ def quantize_fusion(output_dir=None):
 
     from rich.console import Console
     console = Console()
+
+    try:
+        import onnxscript
+    except ImportError:
+        console.print("[yellow]'onnxscript' is required for ONNX export.[/yellow]")
+        import questionary
+        if questionary.confirm("Install onnxscript now?", default=True).ask():
+            import subprocess, sys
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "onnxscript"])
+        else:
+            console.print("[yellow]Skipped. The system works fine without ONNX export.[/yellow]")
+            return
+
     console.print("[cyan]The fusion model uses frozen CLIP + BERT encoders.[/cyan]")
     console.print("[cyan]Exporting the classifier head only to ONNX (encoders stay in PyTorch).[/cyan]")
 
