@@ -256,9 +256,6 @@ def train(epochs, batch_size, lr, val_split, use_amp, grad_accum):
                 logits = model(images, symptoms)
                 loss = loss_fn(logits, labels)
                 val_loss += loss.item()
-                logits = model(images, symptoms)
-                loss = loss_fn(logits, labels)
-                val_loss += loss.item()
 
         avg_val_loss = val_loss / len(val_loader)
 

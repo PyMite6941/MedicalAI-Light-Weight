@@ -1,4 +1,5 @@
 analyzing_images_for_ai.md
+.venv/
 blip*/
 data*/
 checkpoints*/
