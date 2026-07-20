@@ -10,6 +10,18 @@ MODEL_DIR = "./blip-xray-finetuned"
 CHECKPOINT_DIR = "./checkpoints"
 CHECKPOINT_PATH = os.path.join(CHECKPOINT_DIR, "fusion_model.pth")
 ONNX_DIR = os.path.join(MODEL_DIR, "onnx")
+DEFAULT_MODEL_DIR = os.path.join("models", "default")
+DEFAULT_CLASSIFIER_ONNX = os.path.join(DEFAULT_MODEL_DIR, "fusion_classifier.onnx")
+DEFAULT_LABELS_PATH = os.path.join(DEFAULT_MODEL_DIR, "labels.json")
+ONNX_FULL_DIR = os.path.join(CHECKPOINT_DIR, "onnx_full")
+ONNX_FULL_PATH = os.path.join(ONNX_FULL_DIR, "fusion_full.onnx")
+ONNX_FULL_LABELS = os.path.join(ONNX_FULL_DIR, "labels.json")
+
+NIH_LABELS = [
+    "No Finding", "Atelectasis", "Cardiomegaly", "Effusion", "Infiltration",
+    "Mass", "Nodule", "Pneumonia", "Pneumothorax", "Consolidation",
+    "Edema", "Emphysema", "Fibrosis", "Pleural_Thickening", "Hernia",
+]
 
 _loaded_blip = None
 _loaded_fusion = None
@@ -101,18 +113,30 @@ def _infer_blip_onnx(image):
 
 # ── Fusion / Symptom Check inference ──────────────────────────
 
-def infer_fusion(image_path, symptoms):
+def get_available_models():
+    """Return a dict describing which models are available."""
+    return {
+        "trained_pytorch": os.path.exists(CHECKPOINT_PATH),
+        "default_classifier": os.path.exists(DEFAULT_CLASSIFIER_ONNX),
+        "onnx_full_pipeline": os.path.exists(ONNX_FULL_PATH),
+    }
+
+
+def _infer_fusion_default(image_path, symptoms):
+    """Fallback: use default ONNX classifier with stock PyTorch encoders."""
     global _loaded_fusion
     if _loaded_fusion is None:
-        if not os.path.exists(CHECKPOINT_PATH):
-            return None, "No trained fusion model found"
-        from training import DiagnosisFusionModel, load_label_list
-        label_list = load_label_list()
-        if not label_list:
-            return None, "No label data found"
-        checkpoint = torch.load(CHECKPOINT_PATH, weights_only=False)
+        import json
+        from transformers import CLIPModel, CLIPProcessor, AutoTokenizer, AutoModel
+        from training import DiagnosisFusionModel
+
+        label_list = NIH_LABELS
         model = DiagnosisFusionModel(num_conditions=len(label_list))
-        model.classifier.load_state_dict(checkpoint["model_state"])
+        # Reset classifier to random weights if no checkpoint
+        if not os.path.exists(CHECKPOINT_PATH):
+            for layer in model.classifier:
+                if hasattr(layer, "reset_parameters"):
+                    layer.reset_parameters()
         _loaded_fusion = {
             "model": model.eval(),
             "label_list": label_list,
@@ -122,7 +146,6 @@ def infer_fusion(image_path, symptoms):
     m = _loaded_fusion["model"]
     label_list = _loaded_fusion["label_list"]
 
-    from training import collate_fn
     with torch.no_grad():
         logits = m([image], [symptoms])
         probs = torch.softmax(logits, dim=-1)
@@ -130,7 +153,200 @@ def infer_fusion(image_path, symptoms):
 
     return label_list[predicted.item()], confidence.item()
 
-# ── Quantization ──────────────────────────────────────────────
+
+def infer_fusion(image_path, symptoms):
+    global _loaded_fusion
+
+    # Priority 1: Trained PyTorch model
+    if _loaded_fusion is None and os.path.exists(CHECKPOINT_PATH):
+        from training import DiagnosisFusionModel, load_label_list
+        label_list = load_label_list()
+        if label_list:
+            checkpoint = torch.load(CHECKPOINT_PATH, weights_only=False)
+            model = DiagnosisFusionModel(num_conditions=len(label_list))
+            model.classifier.load_state_dict(checkpoint["model_state"])
+            _loaded_fusion = {
+                "model": model.eval(),
+                "label_list": label_list,
+            }
+
+    # Priority 2: Default model (stock encoders + fresh classifier)
+    if _loaded_fusion is None:
+        return _infer_fusion_default(image_path, symptoms)
+
+    image = Image.open(image_path).convert("RGB")
+    m = _loaded_fusion["model"]
+    label_list = _loaded_fusion["label_list"]
+
+    with torch.no_grad():
+        logits = m([image], [symptoms])
+        probs = torch.softmax(logits, dim=-1)
+        confidence, predicted = torch.max(probs, dim=-1)
+
+    return label_list[predicted.item()], confidence.item()
+
+# ── Full ONNX Pipeline Export ─────────────────────────────────
+
+def _ensure_onnx_deps():
+    try:
+        import onnx  # noqa: F401
+        return True
+    except ImportError:
+        from rich.console import Console
+        console = Console()
+        console.print("[yellow]Installing ONNX dependencies...[/yellow]")
+        import subprocess, sys
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install",
+            "onnx", "onnxruntime", "onnxscript",
+        ])
+        return True
+
+def _load_fusion_model():
+    from training import DiagnosisFusionModel, load_label_list
+    label_list = load_label_list()
+    if not label_list:
+        return None, None
+    checkpoint = torch.load(CHECKPOINT_PATH, weights_only=False)
+    model = DiagnosisFusionModel(num_conditions=len(label_list))
+    model.classifier.load_state_dict(checkpoint["model_state"])
+    model.eval()
+    return model, label_list
+
+class _FullFusionONNXWrapper(torch.nn.Module):
+    """Wraps the full fusion pipeline so torch.onnx.export can trace it end-to-end."""
+    def __init__(self, model):
+        super().__init__()
+        self.image_encoder = model.image_encoder.vision_model
+        self.symptom_encoder = model.symptom_encoder
+        self.classifier = model.classifier
+        self.image_proj = model.image_encoder.visual_projection
+        self.text_proj = model.symptom_encoder.pooler
+
+    def forward(self, pixel_values, input_ids, attention_mask):
+        # CLIP vision
+        vision_outputs = self.image_encoder(pixel_values)
+        image_features = self.image_proj(vision_outputs.pooler_output)
+        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+
+        # BERT text
+        text_outputs = self.symptom_encoder(input_ids, attention_mask=attention_mask)
+        text_features = self.text_proj(text_outputs.last_hidden_state[:, 0, :])
+
+        # Combine + classify
+        combined = torch.cat([image_features, text_features], dim=-1)
+        return self.classifier(combined)
+
+def export_full_fusion_onnx(output_dir=None):
+    """Export the entire fusion pipeline (image + text -> logits) to a single ONNX file."""
+    if output_dir is None:
+        output_dir = os.path.join(CHECKPOINT_DIR, "onnx_full")
+    os.makedirs(output_dir, exist_ok=True)
+
+    from rich.console import Console
+    console = Console()
+
+    model, label_list = _load_fusion_model()
+    if model is None:
+        console.print("[red]No model or labels found. Train first.[/red]")
+        return
+
+    _ensure_onnx_deps()
+
+    wrapper = _FullFusionONNXWrapper(model).eval()
+
+    dummy_pixel = torch.randn(1, 3, 224, 224)
+    dummy_ids = torch.randint(0, 100, (1, 64), dtype=torch.long)
+    dummy_mask = torch.ones(1, 64, dtype=torch.long)
+
+    console.print("[cyan]Exporting full fusion pipeline to ONNX...[/cyan]")
+
+    torch.onnx.export(
+        wrapper,
+        (dummy_pixel, dummy_ids, dummy_mask),
+        os.path.join(output_dir, "fusion_full.onnx"),
+        input_names=["pixel_values", "input_ids", "attention_mask"],
+        output_names=["logits"],
+        opset_version=14,
+        dynamic_axes={
+            "input_ids": {0: "batch_size", 1: "seq_len"},
+            "attention_mask": {0: "batch_size", 1: "seq_len"},
+            "pixel_values": {0: "batch_size"},
+            "logits": {0: "batch_size"},
+        },
+    )
+
+    import json
+    with open(os.path.join(output_dir, "labels.json"), "w") as f:
+        json.dump(label_list, f)
+
+    console.print(f"[green]Full ONNX model saved to {output_dir}/fusion_full.onnx[/green]")
+    console.print(f"[green]Labels saved to {output_dir}/labels.json[/green]")
+    console.print(f"[green]Model has {len(label_list)} output classes.[/green]")
+
+def infer_fusion_onnx(image_path, symptoms, model_dir=None):
+    """Run inference using the full ONNX pipeline. No PyTorch needed beyond preprocessing.
+
+    Searches for models in this order:
+      1. checkpoints/onnx_full/  (trained full pipeline)
+      2. models/default/         (default shipped classifier)
+    """
+    import json
+    import numpy as np
+    import onnxruntime as ort
+    from transformers import CLIPProcessor, AutoTokenizer
+
+    # Find the best available ONNX model + labels
+    candidates = [
+        (model_dir, "fusion_full.onnx", "labels.json") if model_dir else None,
+        (ONNX_FULL_DIR, "fusion_full.onnx", "labels.json"),
+        (DEFAULT_MODEL_DIR, "fusion_classifier.onnx", "labels.json"),
+    ]
+
+    onnx_path = None
+    labels_path = None
+    for d, m, l in candidates:
+        if d is None:
+            continue
+        mp = os.path.join(d, m)
+        lp = os.path.join(d, l)
+        if os.path.exists(mp) and os.path.exists(lp):
+            onnx_path = mp
+            labels_path = lp
+            break
+
+    if onnx_path is None:
+        return None, "No ONNX model found. Run 'python setup_default.py' or 'python quantization.py --mode export-full'."
+
+    with open(labels_path) as f:
+        label_list = json.load(f)
+
+    clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+    tokenizer = AutoTokenizer.from_pretrained("emilyalsentzer/Bio_ClinicalBERT")
+
+    image = Image.open(image_path).convert("RGB")
+    img_inputs = clip_processor(images=image, return_tensors="np")
+    pixel_values = img_inputs["pixel_values"].astype(np.float32)
+
+    tok_inputs = tokenizer(symptoms, return_tensors="np", padding="max_length", truncation=True, max_length=64)
+    input_ids = tok_inputs["input_ids"].astype(np.int64)
+    attention_mask = tok_inputs["attention_mask"].astype(np.int64)
+
+    session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+    logits = session.run(None, {
+        "pixel_values": pixel_values,
+        "input_ids": input_ids,
+        "attention_mask": attention_mask,
+    })[0]
+
+    probs = np.exp(logits - logits.max(axis=-1, keepdims=True))
+    probs = probs / probs.sum(axis=-1, keepdims=True)
+    predicted = np.argmax(probs, axis=-1)
+    confidence = float(probs[0, predicted[0]])
+
+    return label_list[predicted[0]], confidence
+
+# ── Legacy Quantization (kept for backward compat) ──────────
 
 def quantize_blip(output_dir=None):
     from rich.console import Console

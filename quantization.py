@@ -5,6 +5,10 @@ def quantize_fusion():
     from optimize import quantize_fusion as _do
     _do()
 
+def export_full():
+    from optimize import export_full_fusion_onnx
+    export_full_fusion_onnx()
+
 def optimize_all():
     from rich.console import Console
     console = Console()
@@ -14,8 +18,13 @@ def optimize_all():
     from optimize import quantize_fusion as qf
     qf()
     console.print()
+    console.print("[cyan]Exporting full ONNX pipeline...[/cyan]")
+    from optimize import export_full_fusion_onnx as ef
+    ef()
+    console.print()
     console.print("[green]Optimization complete![/green]")
-    console.print("  Fusion classifier: ./checkpoints/onnx/")
+    console.print("  Fusion classifier: ./checkpoints/onnx/fusion_classifier.onnx")
+    console.print("  Full pipeline:     ./checkpoints/onnx_full/fusion_full.onnx")
     console.print("[yellow]  BLIP ONNX skipped — upgrade optimum to enable: pip install --upgrade optimum[/yellow]")
 
 def set_threads():
@@ -37,8 +46,10 @@ def show_status():
 
     fusion_onnx = os.path.exists("./checkpoints/onnx/fusion_classifier.onnx")
     fusion_pt = os.path.exists("./checkpoints/fusion_model.pth")
-    print(f"Fusion ONNX:   {'yes' if fusion_onnx else 'no'}")
-    print(f"Fusion .pth:   {'yes' if fusion_pt else 'no'}")
+    fusion_full = os.path.exists("./checkpoints/onnx_full/fusion_full.onnx")
+    print(f"Fusion ONNX (classifier): {'yes' if fusion_onnx else 'no'}")
+    print(f"Fusion ONNX (full):       {'yes' if fusion_full else 'no'}")
+    print(f"Fusion .pth:              {'yes' if fusion_pt else 'no'}")
     print(f"BLIP model:    {'fine-tuned' if os.path.exists('./blip-xray-finetuned') else 'stock (no fine-tune)'}")
 
 def explain():
@@ -50,68 +61,58 @@ def explain():
     console.print(Panel.fit("[bold cyan]Model Optimization - How It Works[/bold cyan]"))
 
     console.print()
-    console.print("[bold]Two models, two optimization strategies:[/bold]")
+    console.print("[bold]Three deployment options:[/bold]")
     console.print()
 
-    t = Table(title="BLIP (Vision) - Caption Generation Model")
-    t.add_column("Setting", style="cyan", width=16)
-    t.add_column("What happens", style="white")
-    t.add_column("Result", style="green")
+    t = Table(title="Deployment Options Comparison")
+    t.add_column("Option", style="cyan", width=22)
+    t.add_column("What it is", style="white")
+    t.add_column("Best for", style="green")
     t.add_row(
         "PyTorch (default)",
-        "Baseline. Each weight is a 32-bit float (4 bytes). Full math precision.",
-        "No setup needed — works immediately"
+        "Full model in PyTorch. Everything works immediately.",
+        "Development, testing, GPU users"
     )
     t.add_row(
-        "FP16 (GPU only)",
-        "On GPU the model automatically uses 16-bit floats. Half the memory, faster math.",
-        "2x less VRAM, 1.5x speed"
+        "ONNX Classifier",
+        "Exports just the tiny classifier head to ONNX. Encoders stay in PyTorch.",
+        "Minor CPU speedup, backward compat"
     )
     t.add_row(
-        "ONNX export",
-        "Requires optimum upgrade: pip install --upgrade optimum. Converts graph to ONNX.",
-        "20-30% faster on CPU"
+        "ONNX Full Pipeline",
+        "Exports entire image+text pipeline to a single ONNX graph.",
+        "Production deployment, no-PyTorch, CI/CD pipelines"
     )
     console.print(t)
     console.print()
 
-    t2 = Table(title="Fusion Model (Symptom Check) - Classifier")
+    t2 = Table(title="Fusion Model (Symptom Check) - Components")
     t2.add_column("Part", style="cyan", width=18)
     t2.add_column("Role", style="white")
-    t2.add_column("Optimized how?", style="green")
-    t2.add_row(
-        "CLIP encoder",
-        "Image -> 512 features. Frozen, not trained.",
-        "Cached in RAM after first use"
-    )
-    t2.add_row(
-        "Bio_ClinicalBERT",
-        "Symptoms -> 768 features. Frozen, not trained.",
-        "Cached in RAM after first use"
-    )
-    t2.add_row(
-        "Classifier head",
-        "The only trainable part. Tiny MLP: 1280 -> 256 -> N classes. ~0.5 MB.",
-        "ONNX export (small gain)"
-    )
+    t2.add_column("Size", style="green")
+    t2.add_row("CLIP encoder", "Image -> 512 features", "~600 MB")
+    t2.add_row("Bio_ClinicalBERT", "Symptoms -> 768 features", "~400 MB")
+    t2.add_row("Classifier head", "1280 -> 256 -> N classes", "~0.5 MB")
     console.print(t2)
     console.print()
 
-    console.print("[bold yellow]Recommendations:[/bold yellow]")
-    console.print("  1. Run [bold]python quantization.py --mode set-threads[/bold] to keep the system responsive")
-    console.print("  2. Run [bold]python quantization.py --mode quantize-fusion[/bold] to optimize Symptom Check")
-    console.print("  3. The system uses PyTorch for BLIP (Vision) by default -- no extra steps needed")
-    console.print("  4. If you have a GPU, FP16 is automatic -- no extra steps needed")
+    console.print("[bold yellow]Recommendations for lower-tech setups:[/bold yellow]")
+    console.print("  1. Run [bold]python quantization.py --mode export-full[/bold] (standalone ONNX)")
+    console.print("  2. Run [bold]python web_ui.py[/bold] (browser-based GUI, no CLI needed)")
+    console.print("  3. Or run [bold]launch.ps1[/bold] (one-click setup + launch)")
+    console.print()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Optimize models for speed and lower memory")
     parser.add_argument("--mode",
-                        choices=["quantize-fusion", "optimize-all", "set-threads", "status", "explain"],
+                        choices=["quantize-fusion", "export-full", "optimize-all", "set-threads", "status", "explain"],
                         default="status")
     args = parser.parse_args()
 
     if args.mode == "quantize-fusion":
         quantize_fusion()
+    elif args.mode == "export-full":
+        export_full()
     elif args.mode == "optimize-all":
         optimize_all()
     elif args.mode == "set-threads":

@@ -1,0 +1,8 @@
+What abnormality is present in this chest X-ray?
+Patient presents with shortness of breath and cough.
+Fever and productive cough for 5 days.
+Chest pain and dyspnea on exertion.
+Routine pre-operative chest X-ray.
+Trauma patient. Evaluate for pneumothorax or fractures.
+Patient with history of smoking. Evaluate for lung pathology.
+Immunocompromised patient with fever.

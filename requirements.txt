@@ -13,3 +13,4 @@ onnxscript>=0.7.0
 # opencv-python  -- camera capture
 # pydicom        -- DICOM file loading
 # nltk           -- BLEU evaluation
+# gradio         -- Web UI (pip install gradio)

@@ -1,0 +1,26 @@
+{
+  "_comment": "MedicalAI - Light Weight configuration. Edit this file instead of Python code.",
+
+  "device": "auto",
+  "cpu_threads": "auto",
+  "use_fp16": "auto",
+  "use_onnx": true,
+
+  "data_dir": "./data",
+  "csv_path": "./data/dataset.csv",
+  "images_dir": "./data/images",
+
+  "checkpoint_dir": "./checkpoints",
+  "onnx_dir": "./checkpoints/onnx",
+  "onnx_full_dir": "./checkpoints/onnx_full",
+
+  "blip_model_dir": "./blip-xray-finetuned",
+  "blip_model_name": "Salesforce/blip-image-captioning-base",
+
+  "fusion_checkpoint": "./checkpoints/fusion_model.pth",
+
+  "confidence_threshold": 0.75,
+  "max_symptom_length": 64,
+  "web_port": 7860,
+  "web_host": "127.0.0.1"
+}
