@@ -80,13 +80,26 @@ Write-Host "MedicalAI - Light Weight" -ForegroundColor Cyan
 Write-Host "========================" -ForegroundColor Cyan
 Write-Host "1) Web UI (recommended - opens in browser)"
 Write-Host "2) Command-line interface (CLI)"
+Write-Host "3) API Server (for website/app integration)"
 Write-Host ""
 
-$choice = Read-Host "Select (1 or 2)"
+$choice = Read-Host "Select (1, 2, or 3)"
 
 if ($choice -eq "2") {
     Write-Host "Launching CLI..." -ForegroundColor Green
     python run.py
+} elseif ($choice -eq "3") {
+    # Ensure API deps are installed
+    try {
+        Import-Module python -ErrorAction Stop
+        python -c "import fastapi" 2>$null
+    } catch {
+        Write-Host "Installing API dependencies..." -ForegroundColor Cyan
+        python -m pip install "fastapi[standard]" uvicorn 2>&1 | Out-Null
+    }
+    Write-Host "Launching API server on http://127.0.0.1:8000 ..." -ForegroundColor Green
+    Write-Host "Your website can connect to: http://127.0.0.1:8000/api" -ForegroundColor Yellow
+    python quantization.py --mode serve-api
 } else {
     Write-Host "Launching web UI..." -ForegroundColor Green
     python web_ui.py

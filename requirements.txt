@@ -14,3 +14,5 @@ onnxscript>=0.7.0
 # pydicom        -- DICOM file loading
 # nltk           -- BLEU evaluation
 # gradio         -- Web UI (pip install gradio)
+# fastapi        -- REST API server (pip install "fastapi[standard]")
+# uvicorn        -- ASGI server for the API

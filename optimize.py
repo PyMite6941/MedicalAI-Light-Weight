@@ -159,10 +159,10 @@ def infer_fusion(image_path, symptoms):
 
     # Priority 1: Trained PyTorch model
     if _loaded_fusion is None and os.path.exists(CHECKPOINT_PATH):
-        from training import DiagnosisFusionModel, load_label_list
-        label_list = load_label_list()
+        from training import DiagnosisFusionModel
+        checkpoint = torch.load(CHECKPOINT_PATH, weights_only=False)
+        label_list = checkpoint.get("label_list", [])
         if label_list:
-            checkpoint = torch.load(CHECKPOINT_PATH, weights_only=False)
             model = DiagnosisFusionModel(num_conditions=len(label_list))
             model.classifier.load_state_dict(checkpoint["model_state"])
             _loaded_fusion = {
@@ -203,11 +203,11 @@ def _ensure_onnx_deps():
         return True
 
 def _load_fusion_model():
-    from training import DiagnosisFusionModel, load_label_list
-    label_list = load_label_list()
+    from training import DiagnosisFusionModel
+    checkpoint = torch.load(CHECKPOINT_PATH, weights_only=False)
+    label_list = checkpoint.get("label_list", [])
     if not label_list:
         return None, None
-    checkpoint = torch.load(CHECKPOINT_PATH, weights_only=False)
     model = DiagnosisFusionModel(num_conditions=len(label_list))
     model.classifier.load_state_dict(checkpoint["model_state"])
     model.eval()
@@ -221,19 +221,15 @@ class _FullFusionONNXWrapper(torch.nn.Module):
         self.symptom_encoder = model.symptom_encoder
         self.classifier = model.classifier
         self.image_proj = model.image_encoder.visual_projection
-        self.text_proj = model.symptom_encoder.pooler
 
     def forward(self, pixel_values, input_ids, attention_mask):
-        # CLIP vision
         vision_outputs = self.image_encoder(pixel_values)
         image_features = self.image_proj(vision_outputs.pooler_output)
         image_features = image_features / image_features.norm(dim=-1, keepdim=True)
 
-        # BERT text
         text_outputs = self.symptom_encoder(input_ids, attention_mask=attention_mask)
-        text_features = self.text_proj(text_outputs.last_hidden_state[:, 0, :])
+        text_features = text_outputs.last_hidden_state.mean(dim=1)
 
-        # Combine + classify
         combined = torch.cat([image_features, text_features], dim=-1)
         return self.classifier(combined)
 
@@ -274,6 +270,7 @@ def export_full_fusion_onnx(output_dir=None):
             "pixel_values": {0: "batch_size"},
             "logits": {0: "batch_size"},
         },
+        dynamo=False,
     )
 
     import json
@@ -298,7 +295,7 @@ def infer_fusion_onnx(image_path, symptoms, model_dir=None):
 
     # Find the best available ONNX model + labels
     candidates = [
-        (model_dir, "fusion_full.onnx", "labels.json") if model_dir else None,
+        (model_dir, "fusion_full.onnx", "labels.json"),
         (ONNX_FULL_DIR, "fusion_full.onnx", "labels.json"),
         (DEFAULT_MODEL_DIR, "fusion_classifier.onnx", "labels.json"),
     ]

@@ -62,12 +62,18 @@ echo "MedicalAI - Light Weight"
 echo "========================"
 echo "1) Web UI (recommended - opens in browser)"
 echo "2) Command-line interface (CLI)"
+echo "3) API Server (for website/app integration)"
 echo ""
-read -rp "Select (1 or 2): " choice
+read -rp "Select (1, 2, or 3): " choice
 
 if [ "$choice" = "2" ]; then
     echo "Launching CLI..."
     python run.py
+elif [ "$choice" = "3" ]; then
+    echo "Launching API server on http://127.0.0.1:8000 ..."
+    echo "Your website can connect to: http://127.0.0.1:8000/api"
+    pip install -q "fastapi[standard]" uvicorn 2>/dev/null || pip install "fastapi[standard]" uvicorn
+    python quantization.py --mode serve-api
 else
     if python -c "import gradio" 2>/dev/null; then
         python web_ui.py

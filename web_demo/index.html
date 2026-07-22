@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MedicalAI Web Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f4f8; color: #1a202c; padding: 2rem; }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 1.75rem; margin-bottom: 0.25rem; }
+    .subtitle { color: #4a5568; margin-bottom: 2rem; }
+    .card { background: #fff; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .card h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #2b6cb0; }
+    label { display: block; font-size: 0.875rem; font-weight: 600; margin-bottom: 0.375rem; color: #2d3748; }
+    input[type="file"], textarea, input[type="text"] { width: 100%; padding: 0.625rem; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.9rem; }
+    textarea { resize: vertical; min-height: 60px; font-family: inherit; }
+    button { background: #2b6cb0; color: #fff; border: none; padding: 0.625rem 1.5rem; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; margin-top: 0.75rem; }
+    button:hover { background: #2c5282; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .result { margin-top: 1rem; padding: 1rem; background: #f7fafc; border-radius: 8px; border: 1px solid #e2e8f0; min-height: 40px; white-space: pre-wrap; }
+    .result .label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #718096; margin-bottom: 0.25rem; }
+    .result .value { font-size: 1rem; }
+    .badge { display: inline-block; font-size: 0.75rem; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600; }
+    .badge.online { background: #c6f6d5; color: #22543d; }
+    .badge.offline { background: #fed7d7; color: #822727; }
+    .row { display: flex; gap: 1rem; align-items: flex-end; }
+    .row > * { flex: 1; }
+    .status-bar { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+    .preview img { max-width: 100%; max-height: 240px; border-radius: 8px; margin-top: 0.5rem; }
+    .code { background: #1a202c; color: #e2e8f0; padding: 1rem; border-radius: 8px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.8rem; overflow-x: auto; }
+    .loading { display: inline-block; width: 16px; height: 16px; border: 2px solid #e2e8f0; border-top-color: #2b6cb0; border-radius: 50%; animation: spin 0.6s linear infinite; margin-right: 0.5rem; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>MedicalAI Web Demo</h1>
+    <p class="subtitle">Connect your website to the MedicalAI API server</p>
+
+    <div class="status-bar" style="margin-bottom:1.5rem;">
+      <span id="healthBadge" class="badge offline">Checking API...</span>
+      <span id="modelInfo" style="font-size:0.85rem;color:#718096;"></span>
+    </div>
+
+    <div class="card">
+      <h2>Radiology Caption</h2>
+      <p style="font-size:0.85rem;color:#718096;margin-bottom:1rem;">Upload a chest X-ray and get an AI-generated radiology report.</p>
+      <label for="visionFile">X-ray Image</label>
+      <input type="file" id="visionFile" accept="image/*" />
+      <div id="visionPreview" class="preview"></div>
+      <button id="visionBtn" disabled>Analyze</button>
+      <div id="visionResult" class="result"><span style="color:#a0aec0;">Upload an image and click Analyze.</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Symptom Check</h2>
+      <p style="font-size:0.85rem;color:#718096;margin-bottom:1rem;">Upload an X-ray with patient symptoms for diagnosis.</p>
+      <div class="row">
+        <div>
+          <label for="symptomFile">X-ray Image</label>
+          <input type="file" id="symptomFile" accept="image/*" />
+          <div id="symptomPreview" class="preview"></div>
+        </div>
+        <div>
+          <label for="symptoms">Symptoms / Clinical Indication</label>
+          <textarea id="symptoms" placeholder="e.g., shortness of breath, cough, fever..."></textarea>
+        </div>
+      </div>
+      <button id="symptomBtn" disabled>Diagnose</button>
+      <div id="symptomResult" class="result"><span style="color:#a0aec0;">Upload an image and enter symptoms.</span></div>
+    </div>
+
+    <div class="card">
+      <h2>How to connect your website</h2>
+      <p style="font-size:0.85rem;color:#718096;margin-bottom:1rem;">Use <code>fetch()</code> from JavaScript to call the API server running on your machine.</p>
+      <div class="code">// Example: Radiology Caption
+const form = new FormData();
+form.append('file', imageFile);
+
+const res = await fetch('http://YOUR_SERVER:8000/api/vision', {
+  method: 'POST',
+  body: form,
+});
+const data = await res.json();
+console.log(data.caption);
+
+// Example: Symptom Check
+const form2 = new FormData();
+form2.append('file', imageFile);
+form2.append('symptoms', 'cough, fever');
+
+const res2 = await fetch('http://YOUR_SERVER:8000/api/symptom-check', {
+  method: 'POST',
+  body: form2,
+});
+const data2 = await res2.json();
+console.log(data2.diagnosis, data2.confidence);</div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://127.0.0.1:8000';
+
+    async function checkHealth() {
+      const badge = document.getElementById('healthBadge');
+      const info = document.getElementById('modelInfo');
+      try {
+        const res = await fetch(`${API_BASE}/health`);
+        if (!res.ok) throw new Error('Not OK');
+        const data = await res.json();
+        badge.className = 'badge online';
+        badge.textContent = 'API Online';
+        info.textContent = `Device: ${data.device} · Model: ${data.model_source}`;
+        document.getElementById('visionBtn').disabled = false;
+        document.getElementById('symptomBtn').disabled = false;
+      } catch {
+        badge.className = 'badge offline';
+        badge.textContent = 'API Offline';
+        info.textContent = 'Start the API server: python quantization.py --mode serve-api';
+      }
+    }
+    checkHealth();
+
+    function previewImage(input, previewId) {
+      const preview = document.getElementById(previewId);
+      preview.innerHTML = '';
+      if (input.files && input.files[0]) {
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(input.files[0]);
+        preview.appendChild(img);
+      }
+    }
+    document.getElementById('visionFile').addEventListener('change', function() {
+      previewImage(this, 'visionPreview');
+    });
+    document.getElementById('symptomFile').addEventListener('change', function() {
+      previewImage(this, 'symptomPreview');
+    });
+
+    async function callEndpoint(endpoint, fileInput, extraFields, resultId) {
+      const btn = resultId === 'visionResult' ? 'visionBtn' : 'symptomBtn';
+      const btnEl = document.getElementById(btn);
+      const resultEl = document.getElementById(resultId);
+
+      if (!fileInput.files || !fileInput.files[0]) {
+        resultEl.innerHTML = '<span style="color:#e53e3e;">Please select an image.</span>';
+        return;
+      }
+
+      btnEl.disabled = true;
+      btnEl.innerHTML = '<span class="loading"></span> Analyzing...';
+      resultEl.innerHTML = '<span class="loading"></span> Running inference...';
+
+      const form = new FormData();
+      form.append('file', fileInput.files[0]);
+      for (const [key, val] of Object.entries(extraFields)) {
+        form.append(key, val);
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}${endpoint}`, { method: 'POST', body: form });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Request failed');
+
+        if (endpoint === '/api/vision') {
+          resultEl.innerHTML = `<div><div class="label">Radiology Caption</div><div class="value">${data.caption}</div><div style="font-size:0.75rem;color:#a0aec0;margin-top:0.5rem;">${data.inference_time_ms} ms</div></div>`;
+        } else {
+          resultEl.innerHTML = `<div><div class="label">Diagnosis</div><div class="value">${data.diagnosis}</div><div style="margin-top:0.5rem;"><span class="label">Confidence</span> <span class="value">${(data.confidence * 100).toFixed(1)}%</span></div><div style="font-size:0.75rem;color:#a0aec0;margin-top:0.5rem;">${data.inference_time_ms} ms</div></div>`;
+        }
+      } catch (err) {
+        resultEl.innerHTML = `<span style="color:#e53e3e;">Error: ${err.message}</span>`;
+      } finally {
+        btnEl.disabled = false;
+        btnEl.textContent = endpoint === '/api/vision' ? 'Analyze' : 'Diagnose';
+      }
+    }
+
+    document.getElementById('visionBtn').addEventListener('click', () => {
+      callEndpoint('/api/vision', document.getElementById('visionFile'), {}, 'visionResult');
+    });
+    document.getElementById('symptomBtn').addEventListener('click', () => {
+      const symptoms = document.getElementById('symptoms').value || 'No symptoms provided';
+      callEndpoint('/api/symptom-check', document.getElementById('symptomFile'), { symptoms }, 'symptomResult');
+    });
+  </script>
+</body>
+</html>
