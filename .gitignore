@@ -1,4 +1,6 @@
 analyzing_images_for_ai.md
+MODEL_CARD.md
+push_to_hub.py
 .venv/
 blip*/
 data*/
