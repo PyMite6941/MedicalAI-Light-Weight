@@ -1,0 +1,78 @@
+# Vertex AI CustomJob configuration for MedicalAI training
+# Usage: gcloud ai custom-jobs create --config=config.yaml
+
+displayName: medicalai-mega-train-{TIMESTAMP}
+jobSpec:
+  workerPoolSpecs:
+    # ── Main worker pool (can be multi-node) ──
+    - machineSpec:
+        machineType: n1-standard-16
+        acceleratorType: NVIDIA_TESLA_V100
+        acceleratorCount: 1
+      replicaCount: 1
+      containerSpec:
+        imageUri: us-central1-docker.pkg.dev/{PROJECT_ID}/medicalai/trainer:latest
+        args:
+          - --epochs=20
+          - --batch_size=32
+          - --lr=5e-4
+          - --grad_accum=2
+          - --use_amp=true
+          - --freeze_encoders=true
+          - --data_dir=/data
+          - --model_dir=/model
+          - --gcs_bucket={GCS_BUCKET}
+          - --gcs_data_prefix=data/
+          - --gcs_model_prefix=models/
+        env:
+          - name: GCS_BUCKET
+            value: "{GCS_BUCKET}"
+          - name: TOKENIZERS_PARALLELISM
+            value: "false"
+        resources:
+          limits:
+            ephemeralStorage: 200Gi
+            memory: 120Gi
+            nvidia.com/gpu: 1
+          requests:
+            ephemeralStorage: 100Gi
+            memory: 60Gi
+            nvidia.com/gpu: 1
+  # ── Larger multi-GPU config (uncomment and remove above to use) ──
+  # - machineSpec:
+  #     machineType: n1-standard-32
+  #     acceleratorType: NVIDIA_TESLA_A100
+  #     acceleratorCount: 4
+  #   replicaCount: 2
+  #   containerSpec:
+  #     imageUri: us-central1-docker.pkg.dev/{PROJECT_ID}/medicalai/trainer:latest
+  #     args:
+  #       --epochs=30
+  #       --batch_size=64
+  #       --lr=1e-3
+  #       --grad_accum=1
+  #       --use_amp=true
+  #       --freeze_encoders=true
+  #       --data_dir=/data
+  #       --model_dir=/model
+  #       --gcs_bucket={GCS_BUCKET}
+  #       --gcs_data_prefix=data/
+  #       --gcs_model_prefix=models/
+  #     env:
+  #       - name: GCS_BUCKET
+  #         value: "{GCS_BUCKET}"
+  #       - name: TOKENIZERS_PARALLELISM
+  #         value: "false"
+  #     resources:
+  #       limits:
+  #         ephemeralStorage: 500Gi
+  #         memory: 240Gi
+  #         nvidia.com/gpu: 4
+  #       requests:
+  #         ephemeralStorage: 200Gi
+  #         memory: 120Gi
+  #         nvidia.com/gpu: 4
+  scheduling:
+    timeout: 86400s               # 24 hours
+    restartJobOnWorkerRestart: false
+  serviceAccount: {SERVICE_ACCOUNT}

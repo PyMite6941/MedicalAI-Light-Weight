@@ -1,0 +1,13 @@
+torch>=2.6.0
+torchvision>=0.21.0
+transformers>=4.48.0
+datasets>=3.3.0
+pillow>=11.0.0
+tqdm>=4.67.0
+numpy>=1.26.0
+
+google-cloud-storage>=2.18.0
+google-cloud-aiplatform>=1.71.0
+
+# Vertex AI training images already include most of these.
+# These are listed for local testing of the cloud pipeline.

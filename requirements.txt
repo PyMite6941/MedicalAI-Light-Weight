@@ -9,6 +9,10 @@ tqdm>=4.65.0
 optimum>=1.12.0
 onnxscript>=0.7.0
 
+# Cloud / scaling (optional)
+# google-cloud-storage>=2.18.0
+# google-cloud-aiplatform>=1.71.0
+
 # Optional (auto-installed on first use):
 # opencv-python  -- camera capture
 # pydicom        -- DICOM file loading
