@@ -7,6 +7,7 @@ from pathlib import Path
 
 import psutil
 
+from drug_interactions import check_medication_list, db_available as drug_db_available
 from knowledge import get_condition_info
 from optimize import (
     clear_memory,
@@ -112,6 +113,15 @@ def _get_app():
         urgency: str
         follow_up: str
 
+    class InteractionRequest(BaseModel):
+        medications: list[str]
+
+    class InteractionCheckResponse(BaseModel):
+        interactions: list
+        unrecognized: list
+        full_database_used: bool
+        disclaimer: str
+
     @a.get("/health", response_model=HealthResponse)
     @a.get("/api/health", response_model=HealthResponse)
     async def health():
@@ -198,6 +208,22 @@ def _get_app():
     @a.get("/api/models")
     async def list_models():
         return get_available_models()
+
+    @a.post("/api/check-interactions", response_model=InteractionCheckResponse)
+    async def check_interactions(req: InteractionRequest):
+        from drug_interactions import DISCLAIMER as DRUG_DISCLAIMER
+        if len(req.medications) < 2:
+            raise HTTPException(status_code=400, detail="Provide at least 2 medications.")
+        loop = asyncio.get_event_loop()
+        interactions, unrecognized = await loop.run_in_executor(
+            _executor, check_medication_list, req.medications
+        )
+        return InteractionCheckResponse(
+            interactions=interactions,
+            unrecognized=unrecognized,
+            full_database_used=drug_db_available(),
+            disclaimer=DRUG_DISCLAIMER,
+        )
 
     app = a
     return app

@@ -21,6 +21,7 @@ onnxruntime>=1.17.0
 # gradio         -- Web UI (pip install gradio)
 # fastapi        -- REST API server (pip install "fastapi[standard]")
 # uvicorn        -- ASGI server for the API
+# requests       -- one-time downloads: update.py --models / --drug-db, drug_interactions.py --download
 
 # Hardware acceleration (optional, pick what matches your device):
 # onnxruntime-gpu    -- replaces onnxruntime for CUDA-accelerated ONNX inference (NVIDIA GPU)

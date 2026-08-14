@@ -393,6 +393,20 @@ CONDITION_INFO = {
         "urgency": URGENCY_URGENT,
         "follow_up": "CT or MRI to assess stability and spinal canal involvement; orthopedic/spine referral.",
     },
+
+    # ── Musculoskeletal / bone X-ray (bone_xray_training.py, separate model) ──
+    "Fracture": {
+        "description": "A break in a bone, ranging from a hairline crack to a full break, identified on an extremity X-ray.",
+        "common_symptoms": ["localized pain", "swelling", "reduced range of motion", "visible deformity"],
+        "urgency": URGENCY_URGENT,
+        "follow_up": "Orthopedic evaluation for immobilization/reduction; urgent care if displaced, open, or neurovascular compromise is suspected.",
+    },
+    "Hardware": {
+        "description": "Surgical hardware (plates, screws, pins, or rods) visible on the X-ray from a prior orthopedic procedure.",
+        "common_symptoms": [],
+        "urgency": URGENCY_ROUTINE,
+        "follow_up": "Expected post-operative finding; compare with surgical history and check for hardware loosening or failure.",
+    },
 }
 
 _GENERIC_INFO = {

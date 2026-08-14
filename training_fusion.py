@@ -395,6 +395,8 @@ class DiagnosisFusionModel(nn.Module):
 
     def encode_images(self, images):
         inputs = self.image_processor(images=images, return_tensors="pt")
+        device = next(self.image_encoder.parameters()).device
+        inputs = {k: v.to(device) for k, v in inputs.items()}
         with torch.no_grad():
             return self.image_encoder.get_image_features(**inputs)
 
@@ -402,6 +404,8 @@ class DiagnosisFusionModel(nn.Module):
         inputs = self.symptom_tokenizer(
             symptom_texts, return_tensors="pt", padding=True, truncation=True, max_length=64
         )
+        device = next(self.symptom_encoder.parameters()).device
+        inputs = {k: v.to(device) for k, v in inputs.items()}
         with torch.no_grad():
             outputs = self.symptom_encoder(**inputs)
             return outputs.last_hidden_state.mean(dim=1)

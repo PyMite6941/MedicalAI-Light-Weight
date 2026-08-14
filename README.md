@@ -25,11 +25,17 @@ python web_ui.py
 # → Opens http://127.0.0.1:7860
 ```
 
-Upload an X-ray and optionally enter symptoms. Two tabs:
+Upload an X-ray and optionally enter symptoms. Tabs:
 - **Vision** — generates a radiology caption/report from the image
 - **Symptom Check** — enter symptoms + image → diagnosis with confidence score, plus a plain-language
   explanation of the finding, its typical urgency, and a suggested next step (see `knowledge.py`).
-  This is general education content, not a diagnosis — always confirm with a clinician.
+- **Bone X-ray (experimental)** — separate model path for extremity X-rays (hand/leg/hip/shoulder);
+  screens for fracture or surgical hardware. Needs its own training run — see
+  [Bone X-ray (experimental)](#bone-x-ray-experimental) below.
+- **Medication Check** — screen a list of current medications for known drug-drug interactions,
+  fully offline. See [Medication Interaction Checking](#medication-interaction-checking) below.
+
+All of the above are general education content, not a diagnosis — always confirm with a clinician.
 
 ### CLI (interactive)
 
@@ -37,7 +43,7 @@ Upload an X-ray and optionally enter symptoms. Two tabs:
 python run.py
 ```
 
-Menu-driven: pick an image, run Vision or Symptom Check.
+Menu-driven: pick an image, run Vision, Symptom Check, or Bone X-ray; or run a Medication Interaction Check (no image needed).
 
 ### Batch (process many images at once)
 
@@ -137,6 +143,65 @@ The system already auto-tunes:
   or rebuilding inference sessions on every request)
 - Memory cleanup after each inference
 
+## Medication Interaction Checking
+
+Screen a patient's current medications for known drug-drug interactions — offline-first, with an
+optional one-time download for much broader coverage.
+
+```powershell
+# Works immediately, zero download: ~35 classic, well-established interactions
+# (warfarin+NSAIDs, MAOIs+SSRIs, ACE inhibitors+potassium-sparing diuretics, etc.)
+python drug_interactions.py --check "Warfarin" "Ibuprofen" "Metoprolol"
+
+# One-time download (needs network) for the full offline database:
+# DDInter 2.0 — ~160,000 deduplicated interaction pairs across ~1,900 drugs, ~5.7 MB on disk
+python drug_interactions.py --download
+# (or: python update.py --drug-db)
+```
+
+After downloading, every lookup runs fully offline against the local SQLite file
+(`./data/drug_interactions.db`) — nothing is fetched at check time. Available in the CLI
+("Medication Interaction Check"), the web UI ("Medication Check" tab), and the REST API
+(`POST /api/check-interactions`).
+
+Interaction data source: [DDInter 2.0](http://ddinter.scbdd.com) (Zhao et al.), CC BY-NC-SA 4.0 —
+non-commercial use only, downloaded on demand rather than bundled in this repository. Every result
+carries a disclaimer: this is a screening aid, not a substitute for a pharmacist or clinician.
+
+## Bone X-ray (experimental)
+
+A second, separate model path for extremity X-rays (hand/leg/hip/shoulder), screening for fracture
+or surgical hardware. Kept intentionally isolated from the chest X-ray pipeline — its own data
+directory, checkpoint, and label space (`Fracture`, `Hardware`).
+
+```powershell
+python bone_xray_training.py --mode prepare-data   # downloads FracAtlas (CC-BY-2.5, ~4K images)
+python bone_xray_training.py --mode train
+```
+
+No pretrained weights ship with this repo — the CLI and web UI both detect whether
+`checkpoints/bone_fracture/bone_fracture_model.pth` exists and clearly label the feature as
+unavailable until you train it. Dataset: [FracAtlas](https://huggingface.co/datasets/yh0701/FracAtlas_dataset)
+(Abedeen et al., *Scientific Data* 2023).
+
+## Go TUI / GUI Clients
+
+A terminal UI and a native desktop GUI, in `client-go/`, for anyone who wants a lightweight client
+without a Python/torch runtime — e.g. a front-desk machine talking to a server running elsewhere.
+Both are thin HTTP clients over the REST API (`python quantization.py --mode serve-api`); all
+inference still happens in the Python server.
+
+```powershell
+python quantization.py --mode serve-api   # start the server first
+
+cd client-go
+go run ./cmd/tui     # terminal UI
+go run ./cmd/gui     # desktop GUI
+```
+
+See [`client-go/README.md`](client-go/README.md) for build instructions (the GUI needs standard
+Linux graphics dev packages to compile; the TUI is pure Go and builds anywhere).
+
 ## Default Models
 
 `python setup_default.py` generates `models/default/fusion_classifier.onnx` — a 1.3 MB ONNX model with 15 standard NIH chest X-ray classes and random weights. This lets the app run immediately after install:
@@ -161,6 +226,9 @@ python update.py --code
 # Upgrade pip packages
 python update.py --deps
 
+# Download the full offline drug-interaction database (one-time, needs network)
+python update.py --drug-db
+
 # Everything at once
 python update.py --all
 ```
@@ -177,11 +245,14 @@ Config is saved in `update_config.json`.
 | `optimize.py` | Device detection, inference, memory, ONNX export/quantization, CPU control |
 | `quantization.py` | CLI wrapper for optimization commands + REST API server |
 | `knowledge.py` | Per-condition descriptions, symptoms, urgency, and follow-up guidance |
+| `drug_interactions.py` | Offline drug-drug interaction checker (built-in set + downloadable DDInter DB) |
+| `bone_xray_training.py` / `bone_fracture.py` | Experimental bone X-ray fracture model (train / infer) |
 | `expand_dataset.py` | Downloads large public datasets + ~200 rare/obscure diagnosis entries |
 | `batch_predict.py` | Non-interactive batch prediction → CSV |
 | `capture.py` | Image input: file picker, camera, DICOM |
 | `download_model.py` | Download pre-trained checkpoints (future) |
 | `build_exe.py` | Build standalone .exe with PyInstaller |
+| `client-go/` | Go TUI + GUI clients for the REST API (see `client-go/README.md`) |
 | `launch.ps1` | One-click Windows launcher |
 | `launch.sh` | One-click Linux/Mac launcher |
 | `config.json` | Settings file (edit instead of Python code) |

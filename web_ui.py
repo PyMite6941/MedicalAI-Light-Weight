@@ -11,6 +11,9 @@ import tempfile
 
 from PIL import Image
 
+from bone_fracture import infer_bone_fracture, model_available as bone_model_available
+from drug_interactions import LEVEL_FROM_STR, check_medication_list, db_available
+from drug_interactions import DISCLAIMER as DRUG_DISCLAIMER
 from knowledge import get_condition_info, DISCLAIMER
 from optimize import (
     clear_memory,
@@ -105,6 +108,66 @@ def analyze_symptom(image, symptoms, use_onnx):
         clear_memory()
 
 
+def analyze_medications(meds_text):
+    if not meds_text or not meds_text.strip():
+        return "Enter medications, one per line or comma-separated."
+
+    meds = [m.strip() for line in meds_text.splitlines() for m in line.split(",") if m.strip()]
+    if len(meds) < 2:
+        return "Enter at least 2 medications to check for interactions."
+
+    interactions, unrecognized = check_medication_list(meds)
+
+    lines = []
+    if interactions:
+        for r in sorted(interactions, key=lambda x: LEVEL_FROM_STR.get(x["level"], 0), reverse=True):
+            line = f"{r['drug_a']} + {r['drug_b']}: {r['level']}"
+            if r.get("note"):
+                line += f" — {r['note']}"
+            line += f" (source: {r['source']})"
+            lines.append(line)
+    else:
+        lines.append("No known interactions found among these medications.")
+
+    if unrecognized:
+        lines.append(f"Not found in the interaction database: {', '.join(unrecognized)}")
+    if not db_available():
+        lines.append("Using the small built-in reference set only. Run 'python drug_interactions.py --download' for much broader coverage (needs network, one-time).")
+    lines.append("")
+    lines.append(DRUG_DISCLAIMER)
+
+    return "\n".join(lines)
+
+
+def analyze_bone(image):
+    if image is None:
+        return "Please upload an X-ray image."
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+        path = f.name
+        Image.fromarray(image).save(path)
+    try:
+        findings, confidences = infer_bone_fracture(path)
+        if findings is None:
+            return confidences  # "not trained yet" message
+
+        lines = []
+        if findings:
+            for label in findings:
+                info = get_condition_info(label)
+                lines.append(f"{label} ({confidences[label]:.1%}): {info['description']}")
+        else:
+            lines.append("No fracture or hardware detected above threshold.")
+        lines.append("")
+        lines.append("All confidences: " + ", ".join(f"{k}={v:.1%}" for k, v in confidences.items()))
+        lines.append(DISCLAIMER)
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Error: {e}"
+    finally:
+        os.unlink(path)
+        clear_memory()
+
+
 def main():
     set_cpu_threads()
     _ensure_default_models()
@@ -174,6 +237,44 @@ def main():
                 inputs=[img_in2, symptoms_in, onnx_checkbox],
                 outputs=[diag_out, conf_out, context_out],
             )
+
+        with gr.Tab("Bone X-ray (experimental)"):
+            gr.Markdown(
+                "Upload an extremity X-ray (hand/leg/hip/shoulder) to screen for fracture or surgical hardware. "
+                "**Separate, experimental model** — " +
+                ("a trained checkpoint is available." if bone_model_available() else
+                 "no trained checkpoint yet. Run `python bone_xray_training.py --mode prepare-data` "
+                 "then `--mode train` to enable this tab.")
+            )
+            with gr.Row():
+                bone_img_in = gr.Image(label="Extremity X-ray", type="numpy")
+            with gr.Row():
+                btn_bone = gr.Button("Screen for Fracture", variant="primary")
+            with gr.Row():
+                bone_out = gr.Textbox(label="Result (general education, not a diagnosis)", lines=6)
+
+            btn_bone.click(fn=analyze_bone, inputs=bone_img_in, outputs=bone_out)
+
+        with gr.Tab("Medication Check"):
+            gr.Markdown(
+                "Enter the patient's current medications (one per line, or comma-separated) "
+                "to screen for known interactions. " +
+                ("Using the full offline database." if db_available() else
+                 "Using the small built-in reference set — run `python drug_interactions.py --download` "
+                 "once while online for much broader coverage.")
+            )
+            with gr.Row():
+                meds_in = gr.Textbox(
+                    label="Current Medications",
+                    placeholder="e.g.\nWarfarin\nIbuprofen\nMetoprolol",
+                    lines=5,
+                )
+            with gr.Row():
+                btn_meds = gr.Button("Check Interactions", variant="primary")
+            with gr.Row():
+                meds_out = gr.Textbox(label="Interaction Results (general education, not a diagnosis)", lines=8)
+
+            btn_meds.click(fn=analyze_medications, inputs=meds_in, outputs=meds_out)
 
         with gr.Tab("System Info"):
             gr.Markdown(f"""
