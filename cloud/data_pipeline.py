@@ -31,7 +31,7 @@ CANONICAL_LABELS = [
     "Lymphangitic_Carcinomatosis", "Lymphadenopathy",
     "Pleural_Plaque", "Pneumoconiosis", "Silicosis", "Asbestosis",
     "Swyer_James", "LAM", "LCH", "Alveolar_Proteinosis",
-    "Scimitar_Syndrome", "Tetralogy_of_F allot", "Coarctation",
+    "Scimitar_Syndrome", "Tetralogy_of_Fallot", "Coarctation",
     "Transposition_of_Great_Arteries", "Hiatal_Hernia",
     "Pneumopericardium", "Subcutaneous_Emphysema",
     "Foreign_Body", "Post_Surgical_Changes",
@@ -128,17 +128,26 @@ def parse_labels(label_str):
 
 
 def map_to_canonical(label_name):
-    canonical = LABEL_TO_IDX
+    """Map a raw label string to its canonical class index.
+
+    Exact matches always win. Only when there's no exact match do we fall
+    back to substring matching, preferring the *longest* (most specific)
+    key — otherwise a broad label like "Mass" would shadow a more specific
+    one like "Mediastinal_Mass" just because it sorts earlier, and a naive
+    single-word match (the old behavior) could match almost anything.
+    """
     n = label_name.strip().lower().replace(" ", "_").replace("-", "_")
-    for key, idx in canonical.items():
-        if key.lower().replace(" ", "_").replace("-", "_") == n:
-            return idx
-        if n in key.lower().replace(" ", "_").replace("-", "_"):
-            return idx
-        for word in n.split("_"):
-            if word and word in key.lower().replace(" ", "_").replace("-", "_"):
-                return idx
-    return -1
+    normalized = {key: key.lower().replace(" ", "_").replace("-", "_") for key in LABEL_TO_IDX}
+
+    for key, key_norm in normalized.items():
+        if n == key_norm:
+            return LABEL_TO_IDX[key]
+
+    best_key, best_len = None, -1
+    for key, key_norm in normalized.items():
+        if (n in key_norm or key_norm in n) and len(key_norm) > best_len:
+            best_key, best_len = key, len(key_norm)
+    return LABEL_TO_IDX[best_key] if best_key else -1
 
 
 def labels_to_multihot(label_names):

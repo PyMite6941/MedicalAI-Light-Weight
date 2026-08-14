@@ -10,6 +10,8 @@ import torch.nn as nn
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader, random_split
 
+from optimize import get_device, set_cpu_threads
+
 DATA_DIR = "./data"
 CSV_PATH = os.path.join(DATA_DIR, "dataset.csv")
 IMAGES_DIR = os.path.join(DATA_DIR, "images")
@@ -102,14 +104,26 @@ def parse_labels(label_str):
 
 
 def map_to_canonical(label_name):
+    """Map a raw label string to its canonical class index.
+
+    Exact matches always win. Only when there's no exact match do we fall
+    back to substring matching, and then we prefer the *longest* (most
+    specific) key — otherwise a broad label like "Effusion" would shadow
+    a more specific one like "Pericardial_Effusion" simply because it
+    appears earlier in CANONICAL_LABELS.
+    """
     n = label_name.strip().lower().replace(" ", "_").replace("-", "_")
-    for key, idx in LABEL_TO_IDX.items():
-        key_norm = key.lower().replace(" ", "_").replace("-", "_")
+    normalized = {key: key.lower().replace(" ", "_").replace("-", "_") for key in LABEL_TO_IDX}
+
+    for key, key_norm in normalized.items():
         if n == key_norm:
-            return idx
-        if n in key_norm or key_norm in n:
-            return idx
-    return -1
+            return LABEL_TO_IDX[key]
+
+    best_key, best_len = None, -1
+    for key, key_norm in normalized.items():
+        if (n in key_norm or key_norm in n) and len(key_norm) > best_len:
+            best_key, best_len = key, len(key_norm)
+    return LABEL_TO_IDX[best_key] if best_key else -1
 
 
 def labels_to_multihot(label_names):
@@ -405,8 +419,13 @@ def train(epochs, batch_size, lr, val_split, use_amp, grad_accum, mode, wider_he
     from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
     _console = Console()
 
-    has_gpu = torch.cuda.is_available()
-    use_amp = use_amp and has_gpu
+    set_cpu_threads()
+    accel = get_device()
+    if accel not in ("cuda", "mps"):
+        accel = "cpu"  # TPU training needs a torch_xla-specific loop; not implemented here.
+    device = torch.device(accel)
+    has_gpu = accel != "cpu"
+    use_amp = use_amp and accel == "cuda"
     scaler = torch.cuda.amp.GradScaler() if use_amp else None
 
     label_list = load_label_list()
@@ -428,11 +447,11 @@ def train(epochs, batch_size, lr, val_split, use_amp, grad_accum, mode, wider_he
     _console.print(f"  Mode: {mode}  Classes: {num_classes}")
     _console.print(f"  Train/Val: {len(train_subset)}/{len(val_subset)}")
     _console.print(f"  Batch: {batch_size}  Grad accum: {grad_accum}")
-    _console.print(f"  Device: {'GPU' if has_gpu else 'CPU'}  AMP: {'ON' if use_amp else 'OFF'}  Head: {'wide' if wider_head else 'std'}")
+    _console.print(f"  Device: {accel.upper()}  AMP: {'ON' if use_amp else 'OFF'}  Head: {'wide' if wider_head else 'std'}")
 
     model = DiagnosisFusionModel(num_classes, freeze_encoders=True, wider_head=wider_head)
     if has_gpu:
-        model = model.cuda()
+        model = model.to(device)
 
     optimizer = torch.optim.AdamW(model.classifier.parameters(), lr=lr, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
@@ -458,7 +477,7 @@ def train(epochs, batch_size, lr, val_split, use_amp, grad_accum, mode, wider_he
             task = train_progress.add_task("", total=len(train_loader), loss=0.0)
             for i, (images, symptoms, labels) in enumerate(train_loader):
                 if has_gpu:
-                    labels = labels.cuda()
+                    labels = labels.to(device)
                 with torch.amp.autocast("cuda", enabled=use_amp):
                     logits = model(images, symptoms)
                     loss = loss_fn(logits, labels)
@@ -484,7 +503,7 @@ def train(epochs, batch_size, lr, val_split, use_amp, grad_accum, mode, wider_he
         with torch.no_grad():
             for images, symptoms, labels in val_loader:
                 if has_gpu:
-                    labels = labels.cuda()
+                    labels = labels.to(device)
                 logits = model(images, symptoms)
                 loss = loss_fn(logits, labels)
                 val_loss += loss.item()

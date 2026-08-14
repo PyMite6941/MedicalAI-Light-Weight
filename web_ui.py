@@ -11,6 +11,7 @@ import tempfile
 
 from PIL import Image
 
+from knowledge import get_condition_info, DISCLAIMER
 from optimize import (
     clear_memory,
     get_available_models,
@@ -75,7 +76,7 @@ def analyze_vision(image):
 
 def analyze_symptom(image, symptoms, use_onnx):
     if image is None:
-        return "Please upload an X-ray image.", ""
+        return "Please upload an X-ray image.", "", ""
     if not symptoms:
         symptoms = "No symptoms provided"
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
@@ -87,10 +88,18 @@ def analyze_symptom(image, symptoms, use_onnx):
         else:
             diagnosis, confidence = infer_fusion(path, symptoms)
         if diagnosis is None:
-            return confidence, "No result"
-        return diagnosis, f"{confidence:.1%}"
+            return confidence, "No result", ""
+
+        info = get_condition_info(diagnosis)
+        context_lines = [info["description"]]
+        if info["common_symptoms"]:
+            context_lines.append("Commonly associated with: " + ", ".join(info["common_symptoms"]) + ".")
+        context_lines.append(f"Urgency: {info['urgency']}. {info['follow_up']}")
+        context_lines.append(DISCLAIMER)
+
+        return diagnosis, f"{confidence:.1%}", "\n".join(context_lines)
     except Exception as e:
-        return f"Error: {e}", ""
+        return f"Error: {e}", "", ""
     finally:
         os.unlink(path)
         clear_memory()
@@ -157,11 +166,13 @@ def main():
                 with gr.Column():
                     diag_out = gr.Textbox(label="Diagnosis", lines=4)
                     conf_out = gr.Textbox(label="Confidence")
+            with gr.Row():
+                context_out = gr.Textbox(label="Clinical Context (general education, not a diagnosis)", lines=5)
 
             btn_diag.click(
                 fn=analyze_symptom,
                 inputs=[img_in2, symptoms_in, onnx_checkbox],
-                outputs=[diag_out, conf_out],
+                outputs=[diag_out, conf_out, context_out],
             )
 
         with gr.Tab("System Info"):

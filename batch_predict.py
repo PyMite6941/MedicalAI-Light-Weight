@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 
+from knowledge import get_condition_info
 from optimize import (
     clear_memory,
     infer_blip,
@@ -48,6 +49,10 @@ def process_image(image_path, symptoms, use_vision, use_onnx):
                 diagnosis, confidence = infer_fusion(str(image_path), symptoms)
             result["diagnosis"] = diagnosis if diagnosis else "INCONCLUSIVE"
             result["confidence"] = f"{confidence:.4f}" if isinstance(confidence, float) else confidence
+            if diagnosis:
+                info = get_condition_info(diagnosis)
+                result["urgency"] = info["urgency"]
+                result["follow_up"] = info["follow_up"]
         except Exception as e:
             result["diagnosis"] = f"ERROR: {e}"
             result["confidence"] = ""
@@ -88,7 +93,7 @@ def main():
         result = process_image(str(img_path), args.symptoms, args.vision, args.onnx)
         results.append(result)
 
-    fieldnames = ["image", "symptoms", "caption", "diagnosis", "confidence"]
+    fieldnames = ["image", "symptoms", "caption", "diagnosis", "confidence", "urgency", "follow_up"]
     with open(args.output, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()

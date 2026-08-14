@@ -27,7 +27,9 @@ python web_ui.py
 
 Upload an X-ray and optionally enter symptoms. Two tabs:
 - **Vision** — generates a radiology caption/report from the image
-- **Symptom Check** — enter symptoms + image → diagnosis with confidence score
+- **Symptom Check** — enter symptoms + image → diagnosis with confidence score, plus a plain-language
+  explanation of the finding, its typical urgency, and a suggested next step (see `knowledge.py`).
+  This is general education content, not a diagnosis — always confirm with a clinician.
 
 ### CLI (interactive)
 
@@ -79,6 +81,10 @@ This creates `./checkpoints/onnx_full/fusion_full.onnx` — a standalone model t
 - ~50% faster on CPU
 - ~60% less memory
 
+Every export is automatically followed by **INT8 dynamic quantization**, producing a
+`fusion_full.int8.onnx` alongside it (roughly a further 4x smaller, faster on CPU).
+Inference always prefers the quantized file when one exists — nothing extra to run.
+
 Run with: `python batch_predict.py image.jpg --onnx` or check "Use ONNX" in the web UI.
 
 ### Option C: Standalone .exe (no Python needed on target machine)
@@ -107,18 +113,28 @@ Build & run: `docker build -t medicalai . && docker run -p 7860:7860 medicalai`
 ## Optimization
 
 ```powershell
-python quantization.py --mode export-full       # Full ONNX pipeline
-python quantization.py --mode quantize-fusion    # Classifier head only
-python quantization.py --mode optimize-all       # All optimizations
+python quantization.py --mode export-full       # Full ONNX pipeline (+ INT8 quantization)
+python quantization.py --mode quantize-fusion    # Classifier head only (+ INT8 quantization)
+python quantization.py --mode quantize-blip      # Export + quantize the BLIP vision model to ONNX
+python quantization.py --mode quantize-int8      # INT8-quantize any ONNX models that exist but aren't yet
+python quantization.py --mode optimize-all       # Everything above, end to end
 python quantization.py --mode set-threads        # Limit CPU usage
-python quantization.py --mode status             # Current state
+python quantization.py --mode status             # Current state (device, providers, quantized models)
 python quantization.py --mode explain            # Detailed explanation
 ```
 
 The system already auto-tunes:
-- CPU threads limited to half cores
-- GPU FP16 auto-detected
-- Model caching (load once, reuse)
+- **Device**: auto-detects in priority order — TPU (via `torch_xla`, if installed and a TPU runtime
+  is present) → CUDA (NVIDIA GPU) → MPS (Apple Silicon GPU) → CPU. Same priority applies to ONNX
+  Runtime execution providers.
+- **Quantization**: every ONNX export (fusion classifier, full pipeline, BLIP vision model) is
+  automatically followed by INT8 dynamic quantization. Inference always prefers the quantized
+  (`*.int8.onnx`) file when one is present.
+- CPU threads limited to half the logical cores, applied consistently to PyTorch, ONNX Runtime,
+  and MKL/OpenMP — training scripts included
+- GPU/MPS FP16 auto-detected
+- Model, ONNX session, and preprocessor caching (load once, reuse — no more re-loading tokenizers
+  or rebuilding inference sessions on every request)
 - Memory cleanup after each inference
 
 ## Default Models
@@ -158,9 +174,10 @@ Config is saved in `update_config.json`.
 | `web_ui.py` | **Browser UI** — `python web_ui.py`, opens at localhost:7860 |
 | `run.py` | Interactive CLI |
 | `training.py` | Download data + train fusion model |
-| `optimize.py` | Inference, memory, ONNX export, CPU control |
-| `quantization.py` | CLI wrapper for optimization commands |
-| `expand_dataset.py` | Add 160 rare/obscure diagnosis entries to dataset |
+| `optimize.py` | Device detection, inference, memory, ONNX export/quantization, CPU control |
+| `quantization.py` | CLI wrapper for optimization commands + REST API server |
+| `knowledge.py` | Per-condition descriptions, symptoms, urgency, and follow-up guidance |
+| `expand_dataset.py` | Downloads large public datasets + ~200 rare/obscure diagnosis entries |
 | `batch_predict.py` | Non-interactive batch prediction → CSV |
 | `capture.py` | Image input: file picker, camera, DICOM |
 | `download_model.py` | Download pre-trained checkpoints (future) |
@@ -175,8 +192,8 @@ Config is saved in `update_config.json`.
 |--------|------|
 | IU-Xray | 6,687 |
 | NIH Chest X-ray | 3,000 |
-| Augmented (rare findings) | 160 |
-| **Total** | **~9,847** |
+| Augmented (rare findings) | ~200 |
+| **Total** | **~9,887** |
 
 Covers 50+ finding combinations: normal, cardiomegaly, CHF, pneumonia (lobar/round/cavitary/viral), atelectasis, pleural effusion, pneumothorax, COPD/emphysema, nodules/masses, ILD/fibrosis, TB, bronchiectasis, fractures, hiatal hernia, pneumoperitoneum, aortic aneurysm/dissection, pericardial effusion, PE signs, congenital anomalies, pneumoconiosis (silicosis/asbestosis/CWP), LAM, LCH, alveolar proteinosis, Swyer-James, ABPA, scimitar syndrome, and more.
 
@@ -185,7 +202,8 @@ Covers 50+ finding combinations: normal, cardiomegaly, CHF, pneumonia (lobar/rou
 - Python 3.10+
 - 4 GB RAM minimum (8 GB recommended)
 - ~3 GB free disk for model downloads
-- GPU optional (auto-detected, ~2x faster)
+- Runs fully on CPU; TPU, NVIDIA GPU (CUDA), and Apple Silicon GPU (MPS) are all auto-detected and
+  used automatically when available, in that priority order — no configuration needed
 
 ## Lower-tech / Small Company Guide
 

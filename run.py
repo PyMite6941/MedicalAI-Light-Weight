@@ -6,6 +6,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 import capture
+from knowledge import get_condition_info, DISCLAIMER
 from optimize import (
     clear_memory,
     get_device,
@@ -52,6 +53,14 @@ def run_symptom_check(image_path):
 
     if confidence < 0.75:
         console.print("[yellow]Low confidence — consider follow-up.[/yellow]")
+
+    info = get_condition_info(diagnosis)
+    console.print()
+    console.print(f"[bold]About this finding:[/bold] {info['description']}")
+    if info["common_symptoms"]:
+        console.print(f"[bold]Commonly associated with:[/bold] {', '.join(info['common_symptoms'])}")
+    console.print(f"[bold]Urgency:[/bold] {info['urgency']}  [bold]Suggested next step:[/bold] {info['follow_up']}")
+    console.print(f"[dim]{DISCLAIMER}[/dim]")
 
     return diagnosis, confidence
 

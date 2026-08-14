@@ -165,17 +165,31 @@ def main():
     cls_path = _export_classifier_onnx()
     size = os.path.getsize(cls_path) / 1024
     console.print(f"  [green]{cls_path}[/green] ({size:.0f} KB)")
+    _quantize(cls_path, console)
 
     full_path = _export_full_onnx()
     if full_path:
         size = os.path.getsize(full_path) / 1024 / 1024
         console.print(f"  [green]{full_path}[/green] ({size:.0f} MB)")
+        _quantize(full_path, console)
     else:
-        console.print("  [yellow]Full pipeline ONNX export skipped (no transformers or CUDA)[/yellow]")
+        console.print("  [yellow]Full pipeline ONNX export skipped (no transformers available)[/yellow]")
         console.print("  [yellow]  Run 'python quantization.py --mode export-full' after training for this.[/yellow]")
 
     console.print()
     console.print("[green]Default models ready. The app will use these until you train a proper model.[/green]")
+
+
+def _quantize(onnx_path, console):
+    """Best-effort INT8 quantization of a freshly exported default model."""
+    try:
+        from optimize import quantize_onnx_model
+    except Exception:
+        return
+    int8_path = quantize_onnx_model(onnx_path)
+    if int8_path:
+        size = os.path.getsize(int8_path) / 1024
+        console.print(f"  [green]{int8_path}[/green] ({size:.0f} KB, INT8)")
 
 
 if __name__ == "__main__":
