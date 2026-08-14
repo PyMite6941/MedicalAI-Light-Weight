@@ -134,6 +134,12 @@ def update_deps():
         console.print(f"[red]Upgrade failed: {e}[/red]")
 
 
+def update_drug_db():
+    """Download the full offline drug-interaction database (DDInter 2.0)."""
+    from drug_interactions import download_and_build_db
+    download_and_build_db()
+
+
 def update_all():
     from rich.console import Console
     console = Console()
@@ -149,6 +155,9 @@ def update_all():
 
     console.print("[cyan]Step 3: Downloading latest models...[/cyan]")
     update_models_from_hf()
+
+    console.print("[cyan]Step 4: Downloading drug-interaction database...[/cyan]")
+    update_drug_db()
 
     console.print()
     console.print("[green]Update complete![/green]")
@@ -189,6 +198,7 @@ def main():
     parser.add_argument("--models", action="store_true", help="Download latest ONNX models")
     parser.add_argument("--code", action="store_true", help="Git pull latest source")
     parser.add_argument("--deps", action="store_true", help="Upgrade pip packages")
+    parser.add_argument("--drug-db", action="store_true", help="Download the full offline drug-interaction database")
     parser.add_argument("--all", action="store_true", help="Update everything")
     parser.add_argument("--set-url", metavar="HF_REPO", help="Set Hugging Face model repo")
     parser.add_argument("--status", action="store_true", help="Show update status")
@@ -218,6 +228,10 @@ def main():
         update_deps()
         return
 
+    if args.drug_db:
+        update_drug_db()
+        return
+
     # Interactive mode
     from rich.console import Console
     import questionary
@@ -229,17 +243,18 @@ def main():
     choice = questionary.select(
         "What would you like to update?",
         choices=[
-            "Everything (code + deps + models)",
+            "Everything (code + deps + models + drug DB)",
             "Models only (download latest ONNX)",
             "Code only (git pull)",
             "Dependencies only (pip upgrade)",
+            "Drug interaction database (full offline download)",
             "Show update status",
             "Set Hugging Face model repo",
             "Cancel",
         ],
     ).ask()
 
-    if choice == "Everything (code + deps + models)":
+    if choice == "Everything (code + deps + models + drug DB)":
         update_all()
     elif choice == "Models only (download latest ONNX)":
         update_models_from_hf()
@@ -247,6 +262,8 @@ def main():
         update_code()
     elif choice == "Dependencies only (pip upgrade)":
         update_deps()
+    elif choice == "Drug interaction database (full offline download)":
+        update_drug_db()
     elif choice == "Show update status":
         show_status()
     elif "Set Hugging Face" in choice:

@@ -405,7 +405,9 @@ def load_nih_full(max_images=80000):
 
 
 # ═══════════════════════════════════════════════════════════════
-# AUGMENTED: 160 rare/obscure diagnosis entries (from original expand_dataset.py)
+# AUGMENTED: ~200 rare/obscure diagnosis entries, covering every canonical
+# label in training_fusion.CANONICAL_LABELS at least once (originally 160,
+# expanded to backfill labels that had zero or near-zero coverage).
 # ═══════════════════════════════════════════════════════════════
 AUGMENTED_ENTRIES = [
     {
@@ -983,6 +985,225 @@ AUGMENTED_ENTRIES = [
     {
         "diagnosis": "FINDINGS: Left apical cap with associated left upper lobe volume loss. No definite mass. No effusion. IMPRESSION: Left apical cap. Consider Pancoast tumor versus benign pleural thickening.",
         "labels": "Pleural_Thickening|Pancoast_Tumor",
+    },
+
+    # ── Additional entries: covering canonical labels that were absent or
+    # under-represented above (granulomatous disease, metastatic disease,
+    # pulmonary edema, chylothorax, diaphragmatic hernia, thoracic spine
+    # fracture, pulmonary hypertension, aspergillosis, organizing pneumonia,
+    # hypersensitivity pneumonitis, lymphangitic carcinomatosis, hemothorax,
+    # round atelectasis, subcutaneous emphysema, ankylosing spondylitis) ──
+    {
+        "diagnosis": "FINDINGS: Multiple small calcified nodules scattered throughout both lungs, most consistent with healed granulomatous disease. No active infiltrate. IMPRESSION: Old granulomatous disease, likely post-infectious (histoplasmosis or prior TB exposure).",
+        "labels": "Granulomatous_Disease|Calcified_Granuloma",
+    },
+    {
+        "diagnosis": "FINDINGS: Calcified right hilar lymph node with several 2-4 mm calcified pulmonary nodules bilaterally. No focal consolidation. IMPRESSION: Findings consistent with prior granulomatous infection, likely histoplasmosis.",
+        "labels": "Granulomatous_Disease|Calcified_Granuloma|Lymphadenopathy",
+    },
+    {
+        "diagnosis": "FINDINGS: Non-calcified granuloma in the right upper lobe measuring 8 mm, stable in appearance. No surrounding infiltrate. IMPRESSION: Solitary granuloma, likely sequela of prior granulomatous disease; recommend comparison with prior imaging if available.",
+        "labels": "Granulomatous_Disease|Nodule",
+    },
+    {
+        "diagnosis": "FINDINGS: Diffuse micronodular pattern with numerous 1-3 mm nodules in a perilymphatic distribution, some calcified. Bilateral hilar adenopathy. IMPRESSION: Findings compatible with granulomatous disease; sarcoidosis or healed miliary infection in the differential.",
+        "labels": "Granulomatous_Disease|Sarcoidosis|Lymphadenopathy",
+    },
+    {
+        "diagnosis": "FINDINGS: Numerous bilateral pulmonary nodules of varying size in a random distribution, ranging from 3 mm to 2.5 cm. No cavitation. Small right pleural effusion. IMPRESSION: Innumerable bilateral pulmonary nodules, highly suspicious for metastatic disease. Recommend CT chest and search for primary malignancy.",
+        "labels": "Mass|Nodule|Metastatic_Disease|Effusion",
+    },
+    {
+        "diagnosis": "FINDINGS: Multiple well-defined 'cannonball' nodules in both lung bases, largest measuring 3 cm. No cavitation or calcification. IMPRESSION: Cannonball metastases, classic for renal cell carcinoma or other hematogenous primary malignancy.",
+        "labels": "Nodule|Mass|Metastatic_Disease",
+    },
+    {
+        "diagnosis": "FINDINGS: Diffuse fine reticulonodular opacities radiating from the hila bilaterally with septal thickening. IMPRESSION: Findings suggestive of lymphangitic carcinomatosis / metastatic lymphangitic spread.",
+        "labels": "Lymphangitic_Carcinomatosis|Metastatic_Disease|Infiltration",
+    },
+    {
+        "diagnosis": "FINDINGS: Lytic destruction of the right sixth rib with an associated soft tissue mass extending into the adjacent lung. IMPRESSION: Osseous lesion with soft tissue component, concerning for metastatic disease to bone.",
+        "labels": "Metastatic_Disease|Rib_Fracture|Mass",
+    },
+    {
+        "diagnosis": "FINDINGS: Bilateral perihilar 'bat-wing' airspace opacities with Kerley B lines and mild cardiomegaly. IMPRESSION: Acute pulmonary edema, likely cardiogenic in etiology.",
+        "labels": "Pulmonary_Edema|Cardiomegaly|Infiltration",
+    },
+    {
+        "diagnosis": "FINDINGS: Diffuse bilateral ground-glass and airspace opacities without cardiomegaly, in a patient with normal renal function and recent large-volume IV fluid administration. IMPRESSION: Findings consistent with non-cardiogenic pulmonary edema.",
+        "labels": "Pulmonary_Edema|Infiltration",
+    },
+    {
+        "diagnosis": "FINDINGS: Interstitial prominence with peribronchial cuffing and small bilateral pleural effusions. Cardiac silhouette mildly enlarged. IMPRESSION: Early interstitial pulmonary edema.",
+        "labels": "Pulmonary_Edema|Effusion|Cardiomegaly",
+    },
+    {
+        "diagnosis": "FINDINGS: Rapid interval development of diffuse bilateral airspace opacities in a patient with recent high-altitude exposure and strenuous exertion; normal heart size. IMPRESSION: Findings compatible with high-altitude pulmonary edema (non-cardiogenic).",
+        "labels": "Pulmonary_Edema|Infiltration",
+    },
+    {
+        "diagnosis": "FINDINGS: Large left pleural effusion following recent thoracic surgery, with chest tube output described clinically as milky white. IMPRESSION: Left pleural effusion, clinically consistent with chylothorax given post-surgical thoracic duct injury.",
+        "labels": "Effusion|Chylothorax|Post_Surgical_Changes",
+    },
+    {
+        "diagnosis": "FINDINGS: Moderate right pleural effusion in a patient with known mediastinal lymphoma. IMPRESSION: Right pleural effusion, favor chylothorax given lymphomatous involvement of the thoracic duct; thoracentesis recommended for triglyceride analysis.",
+        "labels": "Effusion|Chylothorax|Lymphadenopathy",
+    },
+    {
+        "diagnosis": "FINDINGS: New moderate left pleural effusion in an infant following cardiothoracic surgery. IMPRESSION: Left pleural effusion, consider chylothorax secondary to thoracic duct injury; clinical correlation with pleural fluid triglycerides advised.",
+        "labels": "Effusion|Chylothorax|Post_Surgical_Changes",
+    },
+    {
+        "diagnosis": "FINDINGS: Bowel loops visualized within the left hemithorax with mediastinal shift to the right. Absent normal left hemidiaphragm contour. IMPRESSION: Left-sided diaphragmatic hernia with herniation of abdominal contents into the thorax.",
+        "labels": "Diaphragmatic_Hernia",
+    },
+    {
+        "diagnosis": "FINDINGS: Retrocardiac air-fluid level with a soft tissue density projecting above the expected diaphragm contour on the left. IMPRESSION: Findings consistent with Bochdalek diaphragmatic hernia; CT recommended for confirmation.",
+        "labels": "Diaphragmatic_Hernia|Hernia",
+    },
+    {
+        "diagnosis": "FINDINGS: Elevated right hemidiaphragm with a well-defined retrocardiac mass-like opacity containing bowel gas. IMPRESSION: Findings compatible with diaphragmatic hernia, right-sided (Morgagni type favored given location).",
+        "labels": "Diaphragmatic_Hernia",
+    },
+    {
+        "diagnosis": "FINDINGS: Anterior wedge compression deformity of the T8 vertebral body with loss of height, without significant kyphotic angulation. IMPRESSION: Thoracic spine compression fracture at T8, likely osteoporotic in etiology.",
+        "labels": "Thoracic_Spine_Fracture|Kyphoscoliosis",
+    },
+    {
+        "diagnosis": "FINDINGS: Acute-appearing fracture through the T6 vertebral body with mild retropulsion, in the setting of recent trauma. IMPRESSION: Acute thoracic spine fracture at T6; CT recommended for further characterization and to assess canal involvement.",
+        "labels": "Thoracic_Spine_Fracture",
+    },
+    {
+        "diagnosis": "FINDINGS: Multiple thoracic vertebral body height losses at T7-T9 with diffuse osteopenia. IMPRESSION: Multilevel thoracic compression fractures, likely osteoporotic; endocrine workup advised.",
+        "labels": "Thoracic_Spine_Fracture|Kyphoscoliosis",
+    },
+    {
+        "diagnosis": "FINDINGS: Enlarged main pulmonary artery segment measuring 3.4 cm with rapid tapering ('pruning') of peripheral pulmonary vessels. Right ventricular enlargement. IMPRESSION: Findings suggestive of pulmonary arterial hypertension.",
+        "labels": "Pulmonary_Hypertension|Cardiomegaly",
+    },
+    {
+        "diagnosis": "FINDINGS: Prominent central pulmonary arteries with peripheral vascular attenuation in a patient with known COPD. Right heart border convex laterally. IMPRESSION: Findings consistent with pulmonary hypertension secondary to chronic lung disease (cor pulmonale).",
+        "labels": "Pulmonary_Hypertension|COPD|Cardiomegaly",
+    },
+    {
+        "diagnosis": "FINDINGS: Marked enlargement of the pulmonary trunk and right and left main pulmonary arteries in a patient with known chronic pulmonary embolism. IMPRESSION: Findings compatible with chronic thromboembolic pulmonary hypertension.",
+        "labels": "Pulmonary_Hypertension|Pulmonary_Embolism",
+    },
+    {
+        "diagnosis": "FINDINGS: Thick-walled cavitary lesion in the right upper lobe containing a mobile intracavitary soft tissue density with a surrounding air crescent (Monod sign). IMPRESSION: Findings classic for an aspergilloma (fungus ball) within a pre-existing cavity.",
+        "labels": "Aspergillosis|Cavitary_Lesion",
+    },
+    {
+        "diagnosis": "FINDINGS: Multiple nodules with surrounding ground-glass halo in a neutropenic patient. IMPRESSION: Halo sign, highly suspicious for invasive pulmonary aspergillosis; correlate with galactomannan and clinical status.",
+        "labels": "Aspergillosis|Nodule|Infiltration",
+    },
+    {
+        "diagnosis": "FINDINGS: Central bronchiectasis with finger-in-glove mucus-filled bronchi in a patient with longstanding asthma and eosinophilia. IMPRESSION: Findings consistent with allergic bronchopulmonary aspergillosis (ABPA).",
+        "labels": "Aspergillosis|Bronchiectasis|Mucus_Plugging",
+    },
+    {
+        "diagnosis": "FINDINGS: Bilateral patchy peripheral and peribronchial consolidations with a migratory pattern on serial imaging, not responding to antibiotics. IMPRESSION: Findings consistent with cryptogenic organizing pneumonia.",
+        "labels": "Organizing_Pneumonia|Consolidation",
+    },
+    {
+        "diagnosis": "FINDINGS: Multifocal rounded consolidative opacities with an atoll / reversed halo sign in the lung periphery. IMPRESSION: Reversed halo sign, characteristic of organizing pneumonia.",
+        "labels": "Organizing_Pneumonia|Consolidation",
+    },
+    {
+        "diagnosis": "FINDINGS: Bilateral subpleural consolidations developing several weeks after initiation of a new medication, without fever. IMPRESSION: Findings suspicious for secondary (drug-induced) organizing pneumonia.",
+        "labels": "Organizing_Pneumonia|Consolidation",
+    },
+    {
+        "diagnosis": "FINDINGS: Diffuse bilateral ground-glass opacities with poorly defined centrilobular nodules and mosaic attenuation on exhalation. History of pet bird exposure. IMPRESSION: Findings consistent with hypersensitivity pneumonitis (bird fancier's lung).",
+        "labels": "Hypersensitivity_Pneumonitis|Infiltration",
+    },
+    {
+        "diagnosis": "FINDINGS: Upper lobe predominant fibrosis with traction bronchiectasis and mosaic attenuation in a farmer with chronic dyspnea. IMPRESSION: Chronic hypersensitivity pneumonitis (farmer's lung) with fibrotic change.",
+        "labels": "Hypersensitivity_Pneumonitis|Fibrosis|Bronchiectasis",
+    },
+    {
+        "diagnosis": "FINDINGS: Diffuse fine nodular and ground-glass opacities sparing the lung bases, in a patient with regular hot-tub use. IMPRESSION: Findings compatible with hot tub lung, a form of hypersensitivity pneumonitis.",
+        "labels": "Hypersensitivity_Pneumonitis|Infiltration",
+    },
+    {
+        "diagnosis": "FINDINGS: Diffuse bilateral reticulonodular pattern with thickened interlobular septa and peribronchovascular interstitium, most pronounced at the bases, in a patient with known breast carcinoma. IMPRESSION: Findings consistent with lymphangitic carcinomatosis.",
+        "labels": "Lymphangitic_Carcinomatosis|Fibrosis",
+    },
+    {
+        "diagnosis": "FINDINGS: Kerley B lines and peribronchial cuffing without cardiomegaly or overt pulmonary edema, in a patient with metastatic gastric cancer. IMPRESSION: Findings favor lymphangitic spread of tumor over cardiogenic edema given the absence of cardiomegaly.",
+        "labels": "Lymphangitic_Carcinomatosis|Metastatic_Disease",
+    },
+    {
+        "diagnosis": "FINDINGS: Large left pleural effusion with layering density greater than water on the recumbent view, in a trauma patient with rib fractures. IMPRESSION: Findings consistent with hemothorax; urgent chest tube drainage recommended.",
+        "labels": "Effusion|Hemothorax|Rib_Fracture",
+    },
+    {
+        "diagnosis": "FINDINGS: Moderate right-sided pleural fluid collection following recent central line placement, with associated pneumothorax. IMPRESSION: Findings compatible with hemopneumothorax secondary to vascular injury during line placement.",
+        "labels": "Effusion|Hemothorax|Pneumothorax",
+    },
+    {
+        "diagnosis": "FINDINGS: Rapidly accumulating left pleural effusion after blunt chest trauma with multiple left rib fractures. IMPRESSION: Hemothorax secondary to traumatic rib fractures with likely intercostal vessel injury.",
+        "labels": "Hemothorax|Rib_Fracture|Effusion",
+    },
+    {
+        "diagnosis": "FINDINGS: Rounded subpleural opacity in the left lower lobe with a 'comet tail' of vessels and bronchi curving into the mass, adjacent pleural thickening. IMPRESSION: Findings classic for round atelectasis; associated with prior asbestos exposure.",
+        "labels": "Round_Atelectasis|Pleural_Thickening|Asbestosis",
+    },
+    {
+        "diagnosis": "FINDINGS: Well-defined rounded opacity abutting thickened pleura in the right lower lobe, with curvilinear vessels converging toward the lesion ('comet tail sign'). IMPRESSION: Round atelectasis, a benign mimic of malignancy.",
+        "labels": "Round_Atelectasis|Pleural_Thickening",
+    },
+    {
+        "diagnosis": "FINDINGS: Streaky lucencies dissecting through the soft tissues of the chest wall and neck, associated with a small apical pneumothorax. IMPRESSION: Subcutaneous emphysema associated with pneumothorax, likely from alveolar rupture.",
+        "labels": "Subcutaneous_Emphysema|Pneumothorax",
+    },
+    {
+        "diagnosis": "FINDINGS: Extensive gas tracking through the chest wall, neck, and axillary soft tissues following recent thoracic surgery. IMPRESSION: Post-surgical subcutaneous emphysema; recommend clinical correlation to exclude ongoing air leak.",
+        "labels": "Subcutaneous_Emphysema|Post_Surgical_Changes",
+    },
+    {
+        "diagnosis": "FINDINGS: Diffuse subcutaneous gas in the chest wall following traumatic rib fractures with underlying pneumothorax. IMPRESSION: Subcutaneous emphysema secondary to traumatic pneumothorax and rib fractures.",
+        "labels": "Subcutaneous_Emphysema|Pneumothorax|Rib_Fracture",
+    },
+    {
+        "diagnosis": "FINDINGS: 'Bamboo spine' appearance of the thoracic spine with fusion of the vertebral bodies and syndesmophyte formation. Mild apical pleural thickening bilaterally. IMPRESSION: Findings consistent with ankylosing spondylitis with apical fibrobullous disease.",
+        "labels": "Ankylosing_Spondylitis|Pleural_Thickening|Fibrosis",
+    },
+    {
+        "diagnosis": "FINDINGS: Squaring of the thoracic vertebral bodies with bridging syndesmophytes and reduced chest wall excursion. IMPRESSION: Ankylosing spondylitis affecting the thoracic spine.",
+        "labels": "Ankylosing_Spondylitis|Kyphoscoliosis",
+    },
+    {
+        "diagnosis": "FINDINGS: Round consolidative opacity in the right lower lobe in a pediatric patient, with well-circumscribed borders. IMPRESSION: Round pneumonia, a pattern seen characteristically in children.",
+        "labels": "Pneumonia|Consolidation",
+    },
+    {
+        "diagnosis": "FINDINGS: Bilateral peripheral ground-glass and consolidative opacities in a patient with a recent viral illness. IMPRESSION: Findings compatible with atypical/viral pneumonia.",
+        "labels": "Pneumonia|Infiltration",
+    },
+    {
+        "diagnosis": "FINDINGS: Large left tension pneumothorax with contralateral mediastinal shift and flattening of the left hemidiaphragm. IMPRESSION: Large left tension pneumothorax; emergent needle decompression indicated.",
+        "labels": "Pneumothorax",
+    },
+    {
+        "diagnosis": "FINDINGS: Small right pneumothorax identified after ultrasound-guided thoracentesis, stable on expiratory view. IMPRESSION: Small iatrogenic pneumothorax, post-procedural.",
+        "labels": "Pneumothorax|Post_Surgical_Changes",
+    },
+    {
+        "diagnosis": "FINDINGS: Right upper lobe cavitary lesion with surrounding fibronodular opacities and calcified hilar lymph nodes. IMPRESSION: Findings consistent with reactivation pulmonary tuberculosis.",
+        "labels": "Tuberculosis|Cavitary_Lesion|Fibrosis|Lymphadenopathy",
+    },
+    {
+        "diagnosis": "FINDINGS: Diffuse micronodular pattern throughout both lungs in a miliary distribution. IMPRESSION: Miliary tuberculosis; recommend sputum AFB testing and respiratory isolation.",
+        "labels": "Tuberculosis|Nodule",
+    },
+    {
+        "diagnosis": "FINDINGS: Severe cardiomegaly with a globular ('water-bottle') configuration and clear lung fields, no effusion. IMPRESSION: Marked cardiomegaly with water-bottle configuration suggestive of pericardial effusion; echocardiogram recommended.",
+        "labels": "Cardiomegaly|Pericardial_Effusion",
+    },
+    {
+        "diagnosis": "FINDINGS: Free air noted beneath the right hemidiaphragm on upright view. IMPRESSION: Pneumoperitoneum, concerning for hollow viscus perforation; surgical consultation recommended.",
+        "labels": "Pneumoperitoneum",
     },
 ]
 

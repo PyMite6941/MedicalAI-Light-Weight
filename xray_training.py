@@ -6,6 +6,8 @@ from PIL import Image
 from torch.utils.data import Dataset, DataLoader, random_split
 from tqdm import tqdm
 
+from optimize import get_device, set_cpu_threads
+
 MODEL_DIR = "./blip-xray-finetuned"
 CHECKPOINT_PATH = os.path.join(MODEL_DIR, "xray_blip.pth")
 ONNX_PATH = os.path.join(MODEL_DIR, "onnx")
@@ -43,8 +45,13 @@ def train(epochs, batch_size, lr, max_samples, resume, val_split, use_amp, grad_
     from transformers import BlipProcessor, BlipForConditionalGeneration
     from datasets import load_dataset
 
-    has_gpu = torch.cuda.is_available()
-    use_amp = use_amp and has_gpu
+    set_cpu_threads()
+    accel = get_device()
+    if accel not in ("cuda", "mps"):
+        accel = "cpu"  # TPU training needs a torch_xla-specific loop; not implemented here.
+    device = torch.device(accel)
+    has_gpu = accel != "cpu"
+    use_amp = use_amp and accel == "cuda"
     scaler = torch.cuda.amp.GradScaler() if use_amp else None
 
     hf_ds = load_dataset("eltorio/ROCOv2-radiology", split="train", streaming=True)
@@ -59,7 +66,7 @@ def train(epochs, batch_size, lr, max_samples, resume, val_split, use_amp, grad_
         start_epoch = 0
 
     if has_gpu:
-        model = model.cuda()
+        model = model.to(device)
 
     from functools import partial
     _collate = partial(collate_fn, processor=processor)
@@ -72,7 +79,7 @@ def train(epochs, batch_size, lr, max_samples, resume, val_split, use_amp, grad_
     train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True, collate_fn=_collate)
     val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False, collate_fn=_collate)
     print(f"Dataset: {len(train_subset)} train + {len(val_subset)} val samples")
-    print(f"Device: {'GPU' if has_gpu else 'CPU'}  AMP: {'ON' if use_amp else 'OFF'}  Grad accum: {grad_accum}")
+    print(f"Device: {accel.upper()}  AMP: {'ON' if use_amp else 'OFF'}  Grad accum: {grad_accum}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
     model.train()
@@ -93,10 +100,10 @@ def train(epochs, batch_size, lr, max_samples, resume, val_split, use_amp, grad_
             labels = batch.get("labels")
 
             if has_gpu:
-                pixel_values = pixel_values.cuda()
-                input_ids = input_ids.cuda()
-                attention_mask = attention_mask.cuda()
-                labels = labels.cuda()
+                pixel_values = pixel_values.to(device)
+                input_ids = input_ids.to(device)
+                attention_mask = attention_mask.to(device)
+                labels = labels.to(device)
 
             with torch.amp.autocast("cuda", enabled=use_amp):
                 outputs = model(

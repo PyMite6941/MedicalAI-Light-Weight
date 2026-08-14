@@ -8,6 +8,8 @@ import torch.nn as nn
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader, random_split
 
+from optimize import get_device, set_cpu_threads
+
 DATA_DIR = "./data"
 CSV_PATH = os.path.join(DATA_DIR, "dataset.csv")
 IMAGES_DIR = os.path.join(DATA_DIR, "images")
@@ -151,6 +153,8 @@ class DiagnosisFusionModel(nn.Module):
 
     def encode_images(self, images):
         inputs = self.image_processor(images=images, return_tensors="pt")
+        device = next(self.image_encoder.parameters()).device
+        inputs = {k: v.to(device) for k, v in inputs.items()}
         with torch.no_grad():
             return self.image_encoder.get_image_features(**inputs)
 
@@ -158,6 +162,8 @@ class DiagnosisFusionModel(nn.Module):
         inputs = self.symptom_tokenizer(
             symptom_texts, return_tensors="pt", padding=True, truncation=True, max_length=64
         )
+        device = next(self.symptom_encoder.parameters()).device
+        inputs = {k: v.to(device) for k, v in inputs.items()}
         with torch.no_grad():
             outputs = self.symptom_encoder(**inputs)
             return outputs.last_hidden_state.mean(dim=1)
@@ -174,8 +180,13 @@ def train(epochs, batch_size, lr, val_split, use_amp, grad_accum):
     from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
     _console = Console()
 
-    has_gpu = torch.cuda.is_available()
-    use_amp = use_amp and has_gpu
+    set_cpu_threads()
+    accel = get_device()
+    if accel not in ("cuda", "mps"):
+        accel = "cpu"  # TPU training needs a torch_xla-specific loop; not implemented here.
+    device = torch.device(accel)
+    has_gpu = accel != "cpu"
+    use_amp = use_amp and accel == "cuda"
     scaler = torch.cuda.amp.GradScaler() if use_amp else None
 
     label_list = load_label_list()
@@ -195,11 +206,11 @@ def train(epochs, batch_size, lr, val_split, use_amp, grad_accum):
     _console.print(f"  Classes: {len(label_list)}")
     _console.print(f"  Train/Val: {len(train_subset)}/{len(val_subset)}")
     _console.print(f"  Batch size: {batch_size}  Grad accum: {grad_accum}")
-    _console.print(f"  Device: {'GPU' if has_gpu else 'CPU'}  AMP: {'ON' if use_amp else 'OFF'}")
+    _console.print(f"  Device: {accel.upper()}  AMP: {'ON' if use_amp else 'OFF'}")
 
     model = DiagnosisFusionModel(num_conditions=len(label_list))
     if has_gpu:
-        model = model.cuda()
+        model = model.to(device)
     optimizer = torch.optim.AdamW(model.classifier.parameters(), lr=lr)
     loss_fn = nn.CrossEntropyLoss()
 
@@ -223,7 +234,7 @@ def train(epochs, batch_size, lr, val_split, use_amp, grad_accum):
             task = train_progress.add_task("", total=len(train_loader), loss=0.0)
             for i, (images, symptoms, labels) in enumerate(train_loader):
                 if has_gpu:
-                    labels = labels.cuda()
+                    labels = labels.to(device)
                 with torch.amp.autocast("cuda", enabled=use_amp):
                     logits = model(images, symptoms)
                     loss = loss_fn(logits, labels)
@@ -252,7 +263,7 @@ def train(epochs, batch_size, lr, val_split, use_amp, grad_accum):
         with torch.no_grad():
             for images, symptoms, labels in val_loader:
                 if has_gpu:
-                    labels = labels.cuda()
+                    labels = labels.to(device)
                 logits = model(images, symptoms)
                 loss = loss_fn(logits, labels)
                 val_loss += loss.item()

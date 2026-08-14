@@ -5,6 +5,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import psutil
+
+from drug_interactions import check_medication_list, db_available as drug_db_available
+from knowledge import get_condition_info
 from optimize import (
     clear_memory,
     get_available_models,
@@ -19,6 +23,7 @@ from optimize import (
 DEFAULT_MODEL_DIR = "./models/default"
 CHECKPOINT_PATH = "./checkpoints/fusion_model.pth"
 ONNX_FULL_DIR = "./checkpoints/onnx_full"
+FUSION_ONNX_DIR = "./checkpoints/onnx"
 
 def _ensure_default_models():
     if os.path.exists(os.path.join(DEFAULT_MODEL_DIR, "fusion_classifier.onnx")):
@@ -93,6 +98,8 @@ def _get_app():
         model_source: str
         memory: dict
         models: dict
+        onnx_providers: list
+        cpu_threads: int
 
     class VisionResponse(BaseModel):
         caption: str
@@ -102,17 +109,33 @@ def _get_app():
         diagnosis: str
         confidence: float
         inference_time_ms: float
+        description: str
+        urgency: str
+        follow_up: str
+
+    class InteractionRequest(BaseModel):
+        medications: list[str]
+
+    class InteractionCheckResponse(BaseModel):
+        interactions: list
+        unrecognized: list
+        full_database_used: bool
+        disclaimer: str
 
     @a.get("/health", response_model=HealthResponse)
     @a.get("/api/health", response_model=HealthResponse)
     async def health():
+        from optimize import device_summary
         models = get_available_models()
+        summary = device_summary()
         return HealthResponse(
             status="ok",
             device=get_device().upper(),
             model_source=_get_model_source(),
             memory=get_memory_usage(),
             models=models,
+            onnx_providers=summary["onnx_providers"],
+            cpu_threads=summary["cpu_threads"],
         )
 
     @a.post("/api/vision", response_model=VisionResponse)
@@ -165,10 +188,14 @@ def _get_app():
             if diagnosis is None:
                 raise HTTPException(status_code=500, detail=confidence)
 
+            info = get_condition_info(diagnosis)
             return SymptomResponse(
                 diagnosis=diagnosis,
                 confidence=round(confidence, 4),
                 inference_time_ms=round(elapsed, 1),
+                description=info["description"],
+                urgency=info["urgency"],
+                follow_up=info["follow_up"],
             )
         except HTTPException:
             raise
@@ -181,6 +208,22 @@ def _get_app():
     @a.get("/api/models")
     async def list_models():
         return get_available_models()
+
+    @a.post("/api/check-interactions", response_model=InteractionCheckResponse)
+    async def check_interactions(req: InteractionRequest):
+        from drug_interactions import DISCLAIMER as DRUG_DISCLAIMER
+        if len(req.medications) < 2:
+            raise HTTPException(status_code=400, detail="Provide at least 2 medications.")
+        loop = asyncio.get_event_loop()
+        interactions, unrecognized = await loop.run_in_executor(
+            _executor, check_medication_list, req.medications
+        )
+        return InteractionCheckResponse(
+            interactions=interactions,
+            unrecognized=unrecognized,
+            full_database_used=drug_db_available(),
+            disclaimer=DRUG_DISCLAIMER,
+        )
 
     app = a
     return app
@@ -195,10 +238,58 @@ def export_full():
     from optimize import export_full_fusion_onnx
     export_full_fusion_onnx()
 
+def quantize_blip():
+    from optimize import quantize_blip as _do
+    _do()
+
+def quantize_int8():
+    """Apply INT8 dynamic quantization to any ONNX models that exist but
+    haven't been quantized yet (does not export anything new)."""
+    from rich.console import Console
+    from optimize import quantize_onnx_model
+    console = Console()
+
+    targets = [
+        os.path.join(FUSION_ONNX_DIR, "fusion_classifier.onnx"),
+        os.path.join(ONNX_FULL_DIR, "fusion_full.onnx"),
+        os.path.join(DEFAULT_MODEL_DIR, "fusion_classifier.onnx"),
+        os.path.join(DEFAULT_MODEL_DIR, "fusion_full.onnx"),
+    ]
+    blip_onnx_dir = "./blip-xray-finetuned/onnx"
+    if os.path.isdir(blip_onnx_dir):
+        targets += [
+            os.path.join(blip_onnx_dir, f)
+            for f in os.listdir(blip_onnx_dir)
+            if f.endswith(".onnx") and not f.endswith(".int8.onnx")
+        ]
+
+    found = False
+    for path in targets:
+        if not os.path.exists(path):
+            continue
+        found = True
+        int8_path = path.replace(".onnx", ".int8.onnx")
+        if os.path.exists(int8_path):
+            console.print(f"[dim]Already quantized: {int8_path}[/dim]")
+            continue
+        console.print(f"[cyan]Quantizing {path}...[/cyan]")
+        result = quantize_onnx_model(path)
+        if result:
+            orig = os.path.getsize(path) / 1024
+            new = os.path.getsize(result) / 1024
+            console.print(f"[green]  -> {result} ({orig:.0f} KB -> {new:.0f} KB)[/green]")
+        else:
+            console.print(f"[yellow]  Skipped (onnxruntime not installed).[/yellow]")
+
+    if not found:
+        console.print("[yellow]No ONNX models found to quantize. Export one first (export-full, quantize-fusion, or setup_default.py).[/yellow]")
+
 def optimize_all():
     from rich.console import Console
     console = Console()
     console.print("[bold cyan]Full Optimization Pipeline[/bold cyan]")
+    console.print()
+    console.print(f"[cyan]Device: {get_device().upper()}[/cyan]")
     console.print()
     console.print("[cyan]Quantizing fusion model...[/cyan]")
     from optimize import quantize_fusion as qf
@@ -208,9 +299,14 @@ def optimize_all():
     from optimize import export_full_fusion_onnx as ef
     ef()
     console.print()
+    console.print("[cyan]Exporting + quantizing BLIP vision model...[/cyan]")
+    from optimize import quantize_blip as qb
+    qb()
+    console.print()
     console.print("[green]Optimization complete![/green]")
-    console.print("  Fusion classifier: ./checkpoints/onnx/fusion_classifier.onnx")
-    console.print("  Full pipeline:     ./checkpoints/onnx_full/fusion_full.onnx")
+    console.print("  Fusion classifier (fp32/int8): ./checkpoints/onnx/")
+    console.print("  Full pipeline (fp32/int8):     ./checkpoints/onnx_full/")
+    console.print("  BLIP vision (fp32/int8):       ./blip-xray-finetuned/onnx/")
 
 def set_threads():
     from optimize import set_cpu_threads as sct, get_memory_usage as gmu
@@ -221,18 +317,27 @@ def set_threads():
 
 def show_status():
     import torch
+    from optimize import device_summary, get_available_models as gam
     mem = get_memory_usage()
-    print(f"Device:        {get_device().upper()}")
-    print(f"FP16 mode:     {'ON' if get_device() in ('cuda', 'mps') else 'OFF'}")
+    summary = device_summary()
+    print(f"Device:        {summary['device']}")
+    print(f"FP16 mode:     {'ON' if summary['fp16'] else 'OFF'}")
     print(f"Process RAM:   {mem['rss_mb']:.0f} MB")
-    print(f"Torch threads: {torch.get_num_threads()}")
-    fusion_onnx = os.path.exists("./checkpoints/onnx/fusion_classifier.onnx")
-    fusion_pt = os.path.exists(CHECKPOINT_PATH)
-    fusion_full = os.path.exists(ONNX_FULL_DIR + "/fusion_full.onnx")
+    print(f"Torch threads: {torch.get_num_threads()} (capped from {psutil.cpu_count(logical=True)} logical cores)")
+    print(f"ONNX providers: {', '.join(summary['onnx_providers'])}")
+    print()
+    models = gam()
+    fusion_onnx = models["onnx_classifier"]
+    fusion_pt = models["trained_pytorch"]
+    fusion_full = models["onnx_full_pipeline"]
+    fusion_int8 = models["onnx_quantized"]
+    blip_onnx = os.path.exists("./blip-xray-finetuned/onnx")
     print(f"Fusion ONNX (classifier): {'yes' if fusion_onnx else 'no'}")
     print(f"Fusion ONNX (full):       {'yes' if fusion_full else 'no'}")
+    print(f"Fusion ONNX quantized:    {'yes' if fusion_int8 else 'no'}")
     print(f"Fusion .pth:              {'yes' if fusion_pt else 'no'}")
     print(f"BLIP model:    {'fine-tuned' if os.path.exists('./blip-xray-finetuned') else 'stock (no fine-tune)'}")
+    print(f"BLIP ONNX:     {'yes' if blip_onnx else 'no'}")
 
 def explain():
     from rich.console import Console
@@ -250,6 +355,7 @@ def explain():
     t.add_row("PyTorch (default)", "Full model in PyTorch.", "Development, GPU users")
     t.add_row("ONNX Classifier", "Exports classifier head only.", "Minor CPU speedup")
     t.add_row("ONNX Full Pipeline", "Exports entire pipeline to ONNX.", "Production, no-PyTorch")
+    t.add_row("ONNX INT8 (any of the above)", "Dynamic weight quantization.", "Low-RAM / older CPUs")
     console.print(t)
     console.print()
     t2 = Table(title="Fusion Model Components")
@@ -260,6 +366,12 @@ def explain():
     t2.add_row("Bio_ClinicalBERT", "Symptoms -> 768 features", "~400 MB")
     t2.add_row("Classifier head", "1280 -> 256 -> N classes", "~0.5 MB")
     console.print(t2)
+    console.print()
+    console.print("[bold]Device priority:[/bold] TPU > CUDA (NVIDIA GPU) > MPS (Apple GPU) > CPU")
+    console.print("[bold]Quantization:[/bold] every ONNX export is followed by INT8 dynamic")
+    console.print("  quantization (onnxruntime.quantization.quantize_dynamic), producing a")
+    console.print("  '*.int8.onnx' file alongside the full-precision one. Inference always")
+    console.print("  prefers the quantized file when present.")
 
 # ── API Server Mode ─────────────────────────────────────────
 
@@ -281,7 +393,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MedicalAI - Export & Web API server")
     parser.add_argument("--mode",
                         choices=[
-                            "quantize-fusion", "export-full", "optimize-all",
+                            "quantize-fusion", "export-full", "quantize-blip",
+                            "quantize-int8", "optimize-all",
                             "set-threads", "status", "explain",
                             "serve-api",
                         ],
@@ -295,6 +408,10 @@ if __name__ == "__main__":
         quantize_fusion()
     elif args.mode == "export-full":
         export_full()
+    elif args.mode == "quantize-blip":
+        quantize_blip()
+    elif args.mode == "quantize-int8":
+        quantize_int8()
     elif args.mode == "optimize-all":
         optimize_all()
     elif args.mode == "set-threads":

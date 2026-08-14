@@ -1,0 +1,4 @@
+medicalai-tui
+medicalai-gui
+*.exe
+/dist/

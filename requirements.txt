@@ -8,6 +8,7 @@ psutil>=5.9.0
 tqdm>=4.65.0
 optimum>=1.12.0
 onnxscript>=0.7.0
+onnxruntime>=1.17.0
 
 # Cloud / scaling (optional)
 # google-cloud-storage>=2.18.0
@@ -20,3 +21,9 @@ onnxscript>=0.7.0
 # gradio         -- Web UI (pip install gradio)
 # fastapi        -- REST API server (pip install "fastapi[standard]")
 # uvicorn        -- ASGI server for the API
+# requests       -- one-time downloads: update.py --models / --drug-db, drug_interactions.py --download
+
+# Hardware acceleration (optional, pick what matches your device):
+# onnxruntime-gpu    -- replaces onnxruntime for CUDA-accelerated ONNX inference (NVIDIA GPU)
+# torch-xla          -- TPU support (Colab/Kaggle/GCP TPU VMs); device auto-detected when present
+# (Apple Silicon GPU / MPS and CPU both work out of the box with the packages above)
